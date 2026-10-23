@@ -434,7 +434,7 @@ function App() {
 
             <div className="page-count">
               <span>Total pages</span>
-              <strong>{data.pages.length}</strong>
+              <strong>{data.pages.length/2 + 1}</strong>
             </div>
 
             <label className="field-label" htmlFor="page-count">
