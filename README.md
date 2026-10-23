@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -73,3 +74,7 @@ export default defineConfig([
 ])
 
 ```
+=======
+# tcg-binder-planner
+Repo for tcg binder planner
+>>>>>>> 8021a104022c6cc2625048d4868385d216a6897c
