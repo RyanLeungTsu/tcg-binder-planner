@@ -30,7 +30,7 @@ type BinderData = {
 const GRID_OPTIONS: GridOption[] = [
   { label: "2 × 2", rows: 2, cols: 2 },
   { label: "3 × 3", rows: 3, cols: 3 },
-  { label: "4 × 3", rows: 4, cols: 3 },
+  { label: "3 × 4", rows: 3, cols: 4 },
   { label: "4 × 4", rows: 4, cols: 4 },
   { label: "4 × 5", rows: 4, cols: 5 },
   { label: "5 × 4", rows: 5, cols: 4 },
@@ -112,6 +112,11 @@ type BinderPageViewProps = {
   grid: GridOption;
   massMode: boolean;
   updateSlot: (index: number, changes: Partial<BinderSlot>) => void;
+  onDropBasketCard: (
+    basketIndex: number,
+    pageId: number,
+    slotIndex: number,
+  ) => void;
 };
 
 // renders one physical binder page so two pages can sit side by side
@@ -120,6 +125,7 @@ function BinderPageView({
   grid,
   massMode,
   updateSlot,
+  onDropBasketCard,
 }: BinderPageViewProps) {
   const visibleCount = grid.rows * grid.cols;
 
@@ -137,6 +143,31 @@ function BinderPageView({
             className={`card-slot ${slot.owned ? "owned" : "unowned"}`}
             onClick={() => {
               if (massMode) updateSlot(index, { owned: !slot.owned });
+            }}
+            onDragOver={(event) => {
+              // only allos card to be dropped in empty pocket
+              if (!slot.image) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+
+              // occupied slots cant have a card from basket
+              if (slot.image) return;
+
+              const draggedIndex = event.dataTransfer.getData("text/plain");
+
+              // ignores drops not from basket
+              if (draggedIndex.trim() === "") return;
+
+              const basketIndex = Number(draggedIndex);
+
+              if (!Number.isInteger(basketIndex) || basketIndex < 0) return;
+
+              onDropBasketCard(basketIndex, page.id, index);
             }}
           >
             {slot.image ? (
@@ -241,9 +272,88 @@ function App() {
 
   const [activeTab, setActiveTab] = useState<"binder" | "cards">("binder");
   const [basket, setBasket] = useState<NormalizedCard[]>([]);
+  // for basket modal
+  const [basketOpen, setBasketOpen] = useState(false);
+  const [basketPage, setBasketPage] = useState(0);
 
   function addToBasket(card: NormalizedCard) {
     setBasket((previous) => [...previous, card]);
+    setBasketPage(0);
+  }
+
+  // for placing basket cards into a binder
+  function placeBasketCard(
+    basketIndex: number,
+    pageId: number,
+    slotIndex: number,
+  ) {
+    const card = basket[basketIndex];
+    // for invalid drags
+    if (!Number.isInteger(basketIndex) || basketIndex < 0 || !card?.imageUrl) {
+      return;
+    }
+
+    const targetPage = data.pages.find((page) => page.id === pageId);
+    const targetSlot = targetPage?.slots[slotIndex];
+
+    // place into empty pockets
+    if (
+      !targetPage ||
+      !targetSlot ||
+      slotIndex >= visibleCount ||
+      targetSlot.image
+    ) {
+      return;
+    }
+
+    setData((previous) => ({
+      ...previous,
+      currentPage: pageId,
+      pages: previous.pages.map((page) =>
+        page.id !== pageId
+          ? page
+          : {
+              ...page,
+              slots: page.slots.map((slot, index) =>
+                index === slotIndex
+                  ? { ...slot, image: card.imageUrl!, owned: true }
+                  : slot,
+              ),
+            },
+      ),
+    }));
+
+    // for removing only if dragged onto a valid binder spot
+    setBasket((previous) =>
+      previous.filter((_, index) => index !== basketIndex),
+    );
+    setBasketPage(0);
+  }
+
+  function addBasketCardToPage(basketIndex: number) {
+    // uses the page currently being viewed
+    const pageId =
+      viewMode === "inside"
+        ? 1
+        : viewMode === "pages"
+          ? spreadStart
+          : viewMode === "back"
+            ? (data.pages[data.pages.length - 1]?.id ?? data.currentPage)
+            : data.currentPage;
+
+    const page = data.pages.find((item) => item.id === pageId);
+    const emptySlotIndex = page?.slots
+      .slice(0, visibleCount)
+      .findIndex((slot) => !slot.image);
+
+    if (emptySlotIndex === undefined || emptySlotIndex === -1) {
+      alert("There are no empty pockets on this page.");
+      return;
+    }
+
+    placeBasketCard(basketIndex, pageId, emptySlotIndex);
+    setBasketOpen(false);
+    setBasketPage(0);
   }
 
   const grid =
@@ -420,6 +530,8 @@ function App() {
               <p className="eyebrow">WORKSPACE</p>
               <h2>Binder settings</h2>
             </div>
+
+            <div className="sidebar-divider" />
 
             <section className="setting-group">
               <label className="field-label" htmlFor="grid-size">
@@ -598,7 +710,175 @@ function App() {
                   <span className="dot-separator">·</span>
                   {visibleCount} pockets
                 </p>
-              </div>
+                </div>
+
+                <div className="basket-anchor">
+                  <button
+                    className="button button-primary basket-toggle"
+                    onClick={() => setBasketOpen((previous) => !previous)}
+                    aria-expanded={basketOpen}
+                    aria-label={`Open card basket, ${basket.length} cards`}
+                  >
+                    Basket ({basket.length})
+                  </button>
+
+                  {basketOpen && (
+                    <>
+                      <button
+                        className="basket-backdrop"
+                        aria-label="Close basket"
+                        onClick={() => setBasketOpen(false)}
+                      />
+
+                      <section
+                        className="basket-popup"
+                        aria-label="Card basket"
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                      >
+                        <div className="basket-popup-header">
+                          <div>
+                            <strong>Your card basket</strong>
+                            <p>{basket.length} cards waiting to be placed</p>
+                          </div>
+
+                          <button
+                            className="basket-close"
+                            onClick={() => setBasketOpen(false)}
+                            aria-label="Close basket"
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        {basket.length === 0 ? (
+                          <p className="help-text">
+                            Your basket is empty. Visit the Cards tab to add some.
+                          </p>
+                        ) : (
+                          <>
+                            {/* desktop will be horiz scroll. */}
+                            <div className="basket-desktop-list">
+                              {basket.map((card, index) => (
+                                <article
+                                  className="basket-card"
+                                  key={`${card.id}-${index}`}
+                                  draggable={Boolean(card.imageUrl)}
+                                  onDragStart={(event) => {
+                                    if (!card.imageUrl) {
+                                      event.preventDefault();
+                                      return;
+                                    }
+
+                                    event.dataTransfer.setData(
+                                      "text/plain",
+                                      String(index),
+                                    );
+                                    event.dataTransfer.effectAllowed = "move";
+                                  }}
+                                  title={
+                                    card.imageUrl
+                                      ? `Drag ${card.name} onto an empty binder pocket`
+                                      : "This card has no available image"
+                                  }
+                                >
+                                  {card.imageUrl ? (
+                                    <img
+                                      src={card.imageUrl}
+                                      alt={card.name}
+                                      draggable={false}
+                                    />
+                                  ) : (
+                                    <div className="basket-card-no-image">
+                                      No image
+                                    </div>
+                                  )}
+
+                                  <span>{card.name}</span>
+                                  <small>{card.game.toUpperCase()}</small>
+                                </article>
+                              ))}
+                            </div>
+
+                            {/* mobile, page layout */}
+                            <div className="basket-mobile-list">
+                              {basket
+                                .slice(basketPage * 8, basketPage * 8 + 8)
+                                .map((card, visibleIndex) => {
+                                  const basketIndex = basketPage * 8 + visibleIndex;
+
+                                  return (
+                                    <article
+                                      className="basket-card"
+                                      key={`${card.id}-${basketIndex}`}
+                                    >
+                                      {card.imageUrl ? (
+                                        <img src={card.imageUrl} alt={card.name} />
+                                      ) : (
+                                        <div className="basket-card-no-image">
+                                          No image
+                                        </div>
+                                      )}
+
+                                      <span title={card.name}>{card.name}</span>
+
+                                      <button
+                                        className="button button-secondary basket-add-button"
+                                        disabled={!card.imageUrl}
+                                        onClick={() =>
+                                          addBasketCardToPage(basketIndex)
+                                        }
+                                      >
+                                        Add to page
+                                      </button>
+                                    </article>
+                                  );
+                                })}
+                            </div>
+
+                            <div className="basket-mobile-pagination">
+                              <button
+                                className="button button-secondary"
+                                onClick={() =>
+                                  setBasketPage((previous) =>
+                                    Math.max(0, previous - 1),
+                                  )
+                                }
+                                disabled={basketPage === 0}
+                              >
+                                ← Previous
+                              </button>
+
+                              <span>
+                                {basketPage + 1} / {Math.ceil(basket.length / 8)}
+                              </span>
+
+                              <button
+                                className="button button-secondary"
+                                onClick={() =>
+                                  setBasketPage((previous) =>
+                                    Math.min(
+                                      Math.ceil(basket.length / 8) - 1,
+                                      previous + 1,
+                                    ),
+                                  )
+                                }
+                                disabled={
+                                  basketPage >= Math.ceil(basket.length / 8) - 1
+                                }
+                              >
+                                Next →
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </section>
+                    </>
+                  )}
+                </div>
 
               {/* move through the physical binder in reading order. */}
               <div className="pagination">
@@ -651,6 +931,8 @@ function App() {
               </div>
             </div>
 
+
+
             {/* show the closed cover first, then the inside cover and page 1, followed by paired pages */}
             <div className="binder-viewer">
               {viewMode === "cover" && (
@@ -689,6 +971,7 @@ function App() {
                     grid={grid}
                     massMode={massMode}
                     updateSlot={updateSlot}
+                    onDropBasketCard={placeBasketCard}
                   />
                 </div>
               )}
@@ -711,6 +994,7 @@ function App() {
                             grid={grid}
                             massMode={massMode}
                             updateSlot={updateSlot}
+                            onDropBasketCard={placeBasketCard}
                           />
                         ) : (
                           <div
@@ -725,6 +1009,7 @@ function App() {
                             grid={grid}
                             massMode={massMode}
                             updateSlot={updateSlot}
+                            onDropBasketCard={placeBasketCard}
                           />
                         ) : (
                           <div
@@ -745,6 +1030,7 @@ function App() {
                     grid={grid}
                     massMode={massMode}
                     updateSlot={updateSlot}
+                    onDropBasketCard={placeBasketCard}
                   />
 
                   <div

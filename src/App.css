@@ -13,8 +13,8 @@
    Breakpoints
    27rem   — standard phone
    37.5rem — XL phones
-   48rem   — tablet 
-   65rem   — desktop 
+   48rem   — tablet
+   65rem   — desktop
    ============================================================ */
 
 /* ---------- 1. root/global ---------- */
@@ -90,7 +90,7 @@ select:focus-visible {
 
 .topbar {
     position: static;
-    z-index: 10;
+    z-index: 100;
     top: 0;
     min-height: auto;
     padding: 1rem 1.25rem;
@@ -239,6 +239,59 @@ select:focus-visible {
     font-size: 1.5rem;
     font-weight: 650;
     letter-spacing: -0.5px;
+}
+
+.binder-basket {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.binder-basket-item {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 0.5rem;
+}
+
+.binder-basket-item > img {
+    width: 4rem;
+    aspect-ratio: 2 / 3;
+    object-fit: contain;
+    border-radius: 0.25rem;
+}
+
+.binder-basket-no-image {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 2 / 3;
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.binder-basket-info {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.binder-basket-info strong {
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+}
+
+.binder-basket-info small {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.binder-basket-info .button,
+.binder-basket-info .text-button {
+    max-width: 100%;
 }
 
 .setting-group {
@@ -488,6 +541,163 @@ select:focus-visible {
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+.basket-anchor {
+    position: relative;
+    z-index: 20;
+    width: fit-content;
+    margin: 0.5rem 0;
+}
+
+.basket-toggle {
+    white-space: nowrap;
+}
+
+.basket-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    padding: 0;
+    background: #00000073;
+    border: 0;
+}
+
+.basket-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 101;
+    width: calc(100vw - 2rem);
+    max-width: 26rem;
+    max-height: 80vh;
+    overflow: hidden;
+    padding: 1rem;
+    color: #e7ebf4;
+    background: #171b25;
+    border: 0.5rem solid #3a4356;
+    border-radius: 0.5rem;
+    box-shadow: 0 1rem 3rem #00000040;
+    transform: translate(-50%, -50%);
+}
+
+.basket-popup-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.basket-popup-header strong {
+    display: block;
+    font-size: 1rem;
+}
+
+.basket-popup-header p {
+    margin: 0.5rem 0 0;
+    color: #919db3;
+    font-size: 0.5rem;
+}
+
+.basket-close {
+    display: grid;
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    color: #e7ebf4;
+    background: transparent;
+    border: 0;
+    border-radius: 0.5rem;
+    font-size: 1.5rem;
+}
+
+.basket-close:hover {
+    background: #292f40;
+}
+
+.basket-desktop-list {
+    display: none;
+}
+
+.basket-mobile-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem 0.5rem;
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.basket-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+}
+
+.basket-card img,
+.basket-card-no-image {
+    display: block;
+    width: 100%;
+    max-width: 4rem;
+    aspect-ratio: 2 / 3;
+    object-fit: contain;
+    background: #202532;
+    border-radius: 0.5rem;
+}
+
+.basket-card-no-image {
+    display: grid;
+    place-items: center;
+    padding: 0.5rem;
+    color: #919db3;
+    font-size: 0.5rem;
+}
+
+.basket-card span {
+    display: -webkit-box;
+    width: 100%;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 0.5rem;
+    line-height: 1.5;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.basket-card small {
+    color: #919db3;
+    font-size: 0.5rem;
+}
+
+.basket-add-button {
+    width: 100%;
+    padding: 0.5rem 0.5rem;
+    font-size: 0.5rem;
+}
+
+.basket-mobile-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.5rem;
+    border-top: 0.5rem solid #2a3040;
+}
+
+.basket-mobile-pagination span {
+    flex-shrink: 0;
+    font-size: 0.5rem;
+}
+
+.basket-mobile-pagination .button {
+    padding: 0.5rem;
+    font-size: 0.5rem;
 }
 
 .binder-toolbar h1 {
@@ -916,7 +1126,7 @@ select:focus-visible {
 @media (min-width: 48rem) {
     .topbar {
         position: sticky;
-        min-height: 4.5rem;
+        min-height: 12vh;
         padding: 0 1rem;
         flex-wrap: nowrap;
         gap: 1rem;
@@ -940,6 +1150,59 @@ select:focus-visible {
         padding: 1.75rem 1rem 5rem;
         border-right: 0.1rem solid #2a3040;
         border-bottom: 0;
+    }
+
+    .basket-backdrop {
+        display: none;
+    }
+
+    .basket-popup {
+        position: absolute;
+        top: 0;
+        right: auto;
+        bottom: auto;
+        left: calc(100% + 0.75rem);
+        width: 22rem;
+        max-width: 70vw;
+        max-height: 12rem;
+        padding: 0.75rem;
+        transform: none;
+    }
+
+    .basket-popup-header {
+        margin-bottom: 0.625rem;
+    }
+
+    .basket-desktop-list {
+        display: flex;
+        gap: 0.75rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0.125rem 0.125rem 0.5rem;
+    }
+
+    .basket-desktop-list .basket-card {
+        flex: 0 0 4.25rem;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .basket-desktop-list .basket-card:active {
+        cursor: grabbing;
+    }
+
+    .basket-desktop-list .basket-card img,
+    .basket-desktop-list .basket-card-no-image {
+        width: 3.5rem;
+    }
+
+    .basket-desktop-list .basket-card span {
+        font-size: 0.6875rem;
+    }
+
+    .basket-mobile-list,
+    .basket-mobile-pagination {
+        display: none;
     }
 
     .sidebar-footer {
