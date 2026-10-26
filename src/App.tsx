@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+//card imports
+import CardsTab from "./cards/CardsTab";
+import type { NormalizedCard } from "./cards/types";
 
 type GridOption = {
   label: string;
@@ -111,7 +114,7 @@ type BinderPageViewProps = {
   updateSlot: (index: number, changes: Partial<BinderSlot>) => void;
 };
 
-// renders one physical binder page so two pages can sit side by side.
+// renders one physical binder page so two pages can sit side by side
 function BinderPageView({
   page,
   grid,
@@ -236,6 +239,13 @@ function App() {
   >("cover");
   const [spreadStart, setSpreadStart] = useState(2);
 
+  const [activeTab, setActiveTab] = useState<"binder" | "cards">("binder");
+  const [basket, setBasket] = useState<NormalizedCard[]>([]);
+
+  function addToBasket(card: NormalizedCard) {
+    setBasket((previous) => [...previous, card]);
+  }
+
   const grid =
     GRID_OPTIONS.find((option) => option.label === data.grid) ??
     GRID_OPTIONS[1];
@@ -333,7 +343,7 @@ function App() {
     uploadImage(file, setCoverImage);
   }
 
-  // page 1 sits alone on the right; later pages are paired left-to-right.
+  // page 1 sits alone on the right; later pages are paired left-to-right
   function goToPage(id: number) {
     updateData({ currentPage: id });
 
@@ -355,10 +365,24 @@ function App() {
         </a>
 
         <nav className="main-nav">
-          <a className="nav-active" href="#binder">
+          <a
+            className={activeTab === "binder" ? "nav-active" : ""}
+            href="#binder"
+            onClick={(event) => {
+              event.preventDefault();
+              setActiveTab("binder");
+            }}
+          >
             Binder
           </a>
-          <a href="#cards" onClick={(event) => event.preventDefault()}>
+          <a
+            className={activeTab === "cards" ? "nav-active" : ""}
+            href="#cards"
+            onClick={(event) => {
+              event.preventDefault();
+              setActiveTab("cards");
+            }}
+          >
             Cards
           </a>
           <a href="#faq" onClick={(event) => event.preventDefault()}>
@@ -387,360 +411,367 @@ function App() {
         </div>
       </header>
 
-      <div className="workspace" id="binder">
-        <aside className="sidebar">
-          <div className="sidebar-heading">
-            <p className="eyebrow">WORKSPACE</p>
-            <h2>Binder settings</h2>
-          </div>
-
-          <section className="setting-group">
-            <label className="field-label" htmlFor="grid-size">
-              Grid layout
-            </label>
-            <select
-              id="grid-size"
-              value={data.grid}
-              onChange={(event) => updateData({ grid: event.target.value })}
-            >
-              {GRID_OPTIONS.map((option) => (
-                <option key={option.label} value={option.label}>
-                  {option.label} ({option.rows * option.cols} slots)
-                </option>
-              ))}
-            </select>
-            <p className="help-text">
-              Hidden slots keep their contents when you change layouts.
-            </p>
-          </section>
-
-          <div className="sidebar-divider" />
-
-          <section className="setting-group">
-            <label className="field-label" htmlFor="page-select">
-              Current page
-            </label>
-            <select
-              id="page-select"
-              value={data.currentPage}
-              onChange={(event) => goToPage(Number(event.target.value))}
-            >
-              {data.pages.map((page, index) => (
-                <option key={page.id} value={page.id}>
-                  Page {index + 1}
-                </option>
-              ))}
-            </select>
-
-            <div className="page-count">
-              <span>Total pages</span>
-              <strong>{data.pages.length/2 + 1}</strong>
+      {activeTab === "cards" ? (
+        <CardsTab onAddToBasket={addToBasket} basketCount={basket.length} />
+      ) : (
+        <div className="workspace" id="binder">
+          <aside className="sidebar">
+            <div className="sidebar-heading">
+              <p className="eyebrow">WORKSPACE</p>
+              <h2>Binder settings</h2>
             </div>
 
-            <label className="field-label" htmlFor="page-count">
-              Add pages
-            </label>
-            <div className="add-pages-row">
-              <input
-                id="page-count"
-                type="number"
-                min="1"
-                max="100"
-                value={pageInput}
-                onChange={(event) => setPageInput(event.target.value)}
-              />
-              <button className="button button-secondary" onClick={addPages}>
-                Add
-              </button>
-            </div>
-            <p className="help-text">Add between 1 and 100 pages at a time.</p>
-          </section>
-
-          <div className="sidebar-divider" />
-
-          <section className="setting-group">
-            <p className="field-label">Toggle Owned Cards</p>
-            <button
-              className={`mode-button ${massMode ? "mode-enabled" : ""}`}
-              onClick={() => setMassMode((previous) => !previous)}
-              aria-pressed={massMode}
-            >
-              <span className={`toggle-track ${massMode ? "toggle-on" : ""}`}>
-                <span className="toggle-thumb" />
-              </span>
-              <span>
-                <strong>Mass toggle</strong>
-                <small>
-                  {massMode
-                    ? "Click a slot to toggle owned"
-                    : "Use hover buttons"}
-                </small>
-              </span>
-            </button>
-            <p className="help-text">
-              {massMode
-                ? "Click any slot to switch between owned and unowned."
-                : "Hover over a slot to mark it owned."}
-            </p>
-          </section>
-
-          <div className="sidebar-divider" />
-
-          <section className="setting-group">
-            <p className="field-label">Binder cover</p>
-            <div className="cover-tabs">
-              <button
-                className={
-                  coverSide === "front" ? "cover-tab active" : "cover-tab"
-                }
-                onClick={() => setCoverSide("front")}
+            <section className="setting-group">
+              <label className="field-label" htmlFor="grid-size">
+                Grid layout
+              </label>
+              <select
+                id="grid-size"
+                value={data.grid}
+                onChange={(event) => updateData({ grid: event.target.value })}
               >
-                Front
-              </button>
-              <button
-                className={
-                  coverSide === "back" ? "cover-tab active" : "cover-tab"
-                }
-                onClick={() => setCoverSide("back")}
-              >
-                Back
-              </button>
-            </div>
-
-            <label className="field-label" htmlFor="cover-color">
-              Cover colour
-            </label>
-            <div className="color-row">
-              <input
-                id="cover-color"
-                type="color"
-                value={data.coverColor}
-                onChange={(event) =>
-                  updateData({ coverColor: event.target.value })
-                }
-              />
-              <span>{data.coverColor.toUpperCase()}</span>
-            </div>
-
-            <label className="field-label" htmlFor="cover-upload">
-              Cover image
-            </label>
-            <label className="file-picker">
-              <span>↑</span> Upload {coverSide} cover
-              <input
-                id="cover-upload"
-                type="file"
-                accept="image/*"
-                onChange={(event) => uploadCover(event.target.files?.[0])}
-              />
-            </label>
-
-            {coverImage && (
-              <button
-                className="text-button"
-                onClick={() => setCoverImage(null)}
-              >
-                Remove cover image
-              </button>
-            )}
-            <p className="help-text">
-              Cover images are preview-only for now and aren't yet saved between
-              refreshes.
-            </p>
-          </section>
-
-          <div className="sidebar-footer">
-            <span className="save-indicator" />
-            Saved in this browser
-          </div>
-        </aside>
-
-        <main className="binder-main">
-          <div className="binder-toolbar">
-            <div>
-              <p className="eyebrow">YOUR COLLECTION</p>
-              <h1>My Binder</h1>
-              <p className="subheading">
-                Page{" "}
-                {data.pages.findIndex((page) => page.id === data.currentPage) +
-                  1}{" "}
-                of {data.pages.length}
-                <span className="dot-separator">·</span>
-                {visibleCount} pockets
+                {GRID_OPTIONS.map((option) => (
+                  <option key={option.label} value={option.label}>
+                    {option.label} ({option.rows * option.cols} slots)
+                  </option>
+                ))}
+              </select>
+              <p className="help-text">
+                Hidden slots keep their contents when you change layouts.
               </p>
-            </div>
+            </section>
 
-            {/* move through the physical binder in reading order. */}
-            <div className="pagination">
+            <div className="sidebar-divider" />
+
+            <section className="setting-group">
+              <label className="field-label" htmlFor="page-select">
+                Current page
+              </label>
+              <select
+                id="page-select"
+                value={data.currentPage}
+                onChange={(event) => goToPage(Number(event.target.value))}
+              >
+                {data.pages.map((page, index) => (
+                  <option key={page.id} value={page.id}>
+                    Page {index + 1}
+                  </option>
+                ))}
+              </select>
+
+              <div className="page-count">
+                <span>Total pages</span>
+                <strong>{data.pages.length / 2 + 1}</strong>
+              </div>
+
+              <label className="field-label" htmlFor="page-count">
+                Add pages
+              </label>
+              <div className="add-pages-row">
+                <input
+                  id="page-count"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={pageInput}
+                  onChange={(event) => setPageInput(event.target.value)}
+                />
+                <button className="button button-secondary" onClick={addPages}>
+                  Add
+                </button>
+              </div>
+              <p className="help-text">
+                Add between 1 and 100 pages at a time.
+              </p>
+            </section>
+
+            <div className="sidebar-divider" />
+
+            <section className="setting-group">
+              <p className="field-label">Toggle Owned Cards</p>
               <button
-                className="button button-secondary"
-                onClick={() => {
-                  if (viewMode === "cover") return;
+                className={`mode-button ${massMode ? "mode-enabled" : ""}`}
+                onClick={() => setMassMode((previous) => !previous)}
+                aria-pressed={massMode}
+              >
+                <span className={`toggle-track ${massMode ? "toggle-on" : ""}`}>
+                  <span className="toggle-thumb" />
+                </span>
+                <span>
+                  <strong>Mass toggle</strong>
+                  <small>
+                    {massMode
+                      ? "Click a slot to toggle owned"
+                      : "Use hover buttons"}
+                  </small>
+                </span>
+              </button>
+              <p className="help-text">
+                {massMode
+                  ? "Click any slot to switch between owned and unowned."
+                  : "Hover over a slot to mark it owned."}
+              </p>
+            </section>
 
-                  if (viewMode === "inside") {
-                    setViewMode("cover");
-                  } else if (viewMode === "back") {
-                    const lastPage = data.pages.length;
-                    if (lastPage <= 1) {
+            <div className="sidebar-divider" />
+
+            <section className="setting-group">
+              <p className="field-label">Binder cover</p>
+              <div className="cover-tabs">
+                <button
+                  className={
+                    coverSide === "front" ? "cover-tab active" : "cover-tab"
+                  }
+                  onClick={() => setCoverSide("front")}
+                >
+                  Front
+                </button>
+                <button
+                  className={
+                    coverSide === "back" ? "cover-tab active" : "cover-tab"
+                  }
+                  onClick={() => setCoverSide("back")}
+                >
+                  Back
+                </button>
+              </div>
+
+              <label className="field-label" htmlFor="cover-color">
+                Cover colour
+              </label>
+              <div className="color-row">
+                <input
+                  id="cover-color"
+                  type="color"
+                  value={data.coverColor}
+                  onChange={(event) =>
+                    updateData({ coverColor: event.target.value })
+                  }
+                />
+                <span>{data.coverColor.toUpperCase()}</span>
+              </div>
+
+              <label className="field-label" htmlFor="cover-upload">
+                Cover image
+              </label>
+              <label className="file-picker">
+                <span>↑</span> Upload {coverSide} cover
+                <input
+                  id="cover-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => uploadCover(event.target.files?.[0])}
+                />
+              </label>
+
+              {coverImage && (
+                <button
+                  className="text-button"
+                  onClick={() => setCoverImage(null)}
+                >
+                  Remove cover image
+                </button>
+              )}
+              <p className="help-text">
+                Cover images are preview-only for now and aren't yet saved
+                between refreshes.
+              </p>
+            </section>
+
+            <div className="sidebar-footer">
+              <span className="save-indicator" />
+              Saved in this browser
+            </div>
+          </aside>
+
+          <main className="binder-main">
+            <div className="binder-toolbar">
+              <div>
+                <p className="eyebrow">YOUR COLLECTION</p>
+                <h1>My Binder</h1>
+                <p className="subheading">
+                  Page{" "}
+                  {data.pages.findIndex(
+                    (page) => page.id === data.currentPage,
+                  ) + 1}{" "}
+                  of {data.pages.length}
+                  <span className="dot-separator">·</span>
+                  {visibleCount} pockets
+                </p>
+              </div>
+
+              {/* move through the physical binder in reading order. */}
+              <div className="pagination">
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    if (viewMode === "cover") return;
+
+                    if (viewMode === "inside") {
+                      setViewMode("cover");
+                    } else if (viewMode === "back") {
+                      const lastPage = data.pages.length;
+                      if (lastPage <= 1) {
+                        setViewMode("inside");
+                      } else {
+                        setViewMode("pages");
+                        setSpreadStart(2 + 2 * Math.floor((lastPage - 2) / 2));
+                      }
+                    } else if (spreadStart === 2) {
                       setViewMode("inside");
                     } else {
-                      setViewMode("pages");
-                      setSpreadStart(2 + 2 * Math.floor((lastPage - 2) / 2));
+                      setSpreadStart((previous) => previous - 2);
                     }
-                  } else if (spreadStart === 2) {
-                    setViewMode("inside");
-                  } else {
-                    setSpreadStart((previous) => previous - 2);
-                  }
-                }}
-                disabled={viewMode === "cover"}
-              >
-                ← Previous
-              </button>
-
-              <button
-                className="button button-secondary"
-                onClick={() => {
-                  if (viewMode === "cover") {
-                    setViewMode("inside");
-                  } else if (viewMode === "inside") {
-                    setViewMode(data.pages.length <= 1 ? "back" : "pages");
-                    setSpreadStart(2);
-                  } else if (viewMode === "pages") {
-                    if (spreadStart + 2 >= data.pages.length) {
-                      setViewMode("back");
-                    } else {
-                      setSpreadStart((previous) => previous + 2);
-                    }
-                  }
-                }}
-                disabled={viewMode === "back"}
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-
-          {/* show the closed cover first, then the inside cover and page 1, followed by paired pages */}
-          <div className="binder-viewer">
-            {viewMode === "cover" && (
-              <button
-                className="closed-cover"
-                style={{
-                  backgroundColor: data.coverColor,
-                  backgroundImage: coverImage
-                    ? `linear-gradient(#0002, #0004), url("${coverImage}")`
-                    : undefined,
-                }}
-                onClick={() => setViewMode("inside")}
-                title="Open binder"
-              >
-                <span className="cover-kicker">TRADING CARD COLLECTION</span>
-                <strong>MY BINDER</strong>
-                <span>{data.pages.length} pages · Click to open</span>
-                {/*placeholder*/}
-                <span className="cover-mark">TCG</span>
-              </button>
-            )}
-
-            {viewMode === "inside" && (
-              <div className="binder-spread">
-                <div
-                  className="inside-cover"
-                  style={{ backgroundColor: data.coverColor }}
+                  }}
+                  disabled={viewMode === "cover"}
                 >
-                  <small>Front Cover</small>
-                </div>
+                  ← Previous
+                </button>
 
-                <BinderPageView
-                  page={
-                    data.pages.find((page) => page.id === 1) ?? data.pages[0]
-                  }
-                  grid={grid}
-                  massMode={massMode}
-                  updateSlot={updateSlot}
-                />
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    if (viewMode === "cover") {
+                      setViewMode("inside");
+                    } else if (viewMode === "inside") {
+                      setViewMode(data.pages.length <= 1 ? "back" : "pages");
+                      setSpreadStart(2);
+                    } else if (viewMode === "pages") {
+                      if (spreadStart + 2 >= data.pages.length) {
+                        setViewMode("back");
+                      } else {
+                        setSpreadStart((previous) => previous + 2);
+                      }
+                    }
+                  }}
+                  disabled={viewMode === "back"}
+                >
+                  Next →
+                </button>
               </div>
-            )}
+            </div>
 
-            {viewMode === "pages" && (
-              <div className="binder-spread">
-                {(() => {
-                  const leftPage = data.pages.find(
-                    (page) => page.id === spreadStart,
-                  );
-                  const rightPage = data.pages.find(
-                    (page) => page.id === spreadStart + 1,
-                  );
-
-                  return (
-                    <>
-                      {leftPage ? (
-                        <BinderPageView
-                          page={leftPage}
-                          grid={grid}
-                          massMode={massMode}
-                          updateSlot={updateSlot}
-                        />
-                      ) : (
-                        <div
-                          className="inside-cover"
-                          style={{ backgroundColor: data.coverColor }}
-                        />
-                      )}
-
-                      {rightPage ? (
-                        <BinderPageView
-                          page={rightPage}
-                          grid={grid}
-                          massMode={massMode}
-                          updateSlot={updateSlot}
-                        />
-                      ) : (
-                        <div
-                          className="inside-cover"
-                          style={{ backgroundColor: data.coverColor }}
-                        />
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {viewMode === "back" && (
-              <div className="binder-spread">
-                <BinderPageView
-                  page={data.pages[data.pages.length - 1]}
-                  grid={grid}
-                  massMode={massMode}
-                  updateSlot={updateSlot}
-                />
-
-                <div
-                  className="inside-cover back-cover"
+            {/* show the closed cover first, then the inside cover and page 1, followed by paired pages */}
+            <div className="binder-viewer">
+              {viewMode === "cover" && (
+                <button
+                  className="closed-cover"
                   style={{
                     backgroundColor: data.coverColor,
                     backgroundImage: coverImage
                       ? `linear-gradient(#0002, #0004), url("${coverImage}")`
                       : undefined,
                   }}
+                  onClick={() => setViewMode("inside")}
+                  title="Open binder"
                 >
-                  <small>Back Cover</small>
-                </div>
-              </div>
-            )}
-          </div>
+                  <span className="cover-kicker">TRADING CARD COLLECTION</span>
+                  <strong>MY BINDER</strong>
+                  <span>{data.pages.length} pages · Click to open</span>
+                  {/*placeholder*/}
+                  <span className="cover-mark">TCG</span>
+                </button>
+              )}
 
-          <footer className="binder-footer">
-            <span>{visibleCount} visible pockets</span>
-            <span>
-              {activePage?.slots.filter((slot) => slot.owned).length} owned on
-              this page
-            </span>
-          </footer>
-        </main>
-      </div>
+              {viewMode === "inside" && (
+                <div className="binder-spread">
+                  <div
+                    className="inside-cover"
+                    style={{ backgroundColor: data.coverColor }}
+                  >
+                    <small>Front Cover</small>
+                  </div>
+
+                  <BinderPageView
+                    page={
+                      data.pages.find((page) => page.id === 1) ?? data.pages[0]
+                    }
+                    grid={grid}
+                    massMode={massMode}
+                    updateSlot={updateSlot}
+                  />
+                </div>
+              )}
+
+              {viewMode === "pages" && (
+                <div className="binder-spread">
+                  {(() => {
+                    const leftPage = data.pages.find(
+                      (page) => page.id === spreadStart,
+                    );
+                    const rightPage = data.pages.find(
+                      (page) => page.id === spreadStart + 1,
+                    );
+
+                    return (
+                      <>
+                        {leftPage ? (
+                          <BinderPageView
+                            page={leftPage}
+                            grid={grid}
+                            massMode={massMode}
+                            updateSlot={updateSlot}
+                          />
+                        ) : (
+                          <div
+                            className="inside-cover"
+                            style={{ backgroundColor: data.coverColor }}
+                          />
+                        )}
+
+                        {rightPage ? (
+                          <BinderPageView
+                            page={rightPage}
+                            grid={grid}
+                            massMode={massMode}
+                            updateSlot={updateSlot}
+                          />
+                        ) : (
+                          <div
+                            className="inside-cover"
+                            style={{ backgroundColor: data.coverColor }}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {viewMode === "back" && (
+                <div className="binder-spread">
+                  <BinderPageView
+                    page={data.pages[data.pages.length - 1]}
+                    grid={grid}
+                    massMode={massMode}
+                    updateSlot={updateSlot}
+                  />
+
+                  <div
+                    className="inside-cover back-cover"
+                    style={{
+                      backgroundColor: data.coverColor,
+                      backgroundImage: coverImage
+                        ? `linear-gradient(#0002, #0004), url("${coverImage}")`
+                        : undefined,
+                    }}
+                  >
+                    <small>Back Cover</small>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <footer className="binder-footer">
+              <span>{visibleCount} visible pockets</span>
+              <span>
+                {activePage?.slots.filter((slot) => slot.owned).length} owned on
+                this page
+              </span>
+            </footer>
+          </main>
+        </div>
+      )}
     </div>
   );
 }
