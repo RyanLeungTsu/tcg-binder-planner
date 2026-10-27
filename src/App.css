@@ -294,6 +294,23 @@ select:focus-visible {
     max-width: 100%;
 }
 
+.basket-popup {
+    position: absolute;
+    top: 0;
+    right: auto;
+    bottom: auto;
+    left: calc(100% + 0.75rem);
+    width: min(28rem, 70vw);
+    max-width: 70vw;
+    max-height: 14rem;
+    overflow: hidden;
+    padding: 0.75rem;
+    transform: none;
+    /*prevents vert page scroll*/
+    overscroll-behavior: contain;
+    overscroll-behavior-y: contain;
+}
+
 .setting-group {
     min-width: 0;
 }
@@ -804,7 +821,10 @@ select:focus-visible {
 
 .binder-viewer {
     width: 100%;
-    margin: 1rem auto 1.5rem;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 /* two physical pages with seam down the binder spine. */
@@ -819,7 +839,10 @@ select:focus-visible {
     border: 0.1rem solid #303849;
     border-radius: 0.75rem;
     box-shadow: 0 1.5rem 3rem #00000025;
-    min-width: 60vw;
+    min-width: 0;
+    width: 100%;
+    max-width: 90rem;
+    margin-inline: auto;
 }
 
 .binder-page {
@@ -883,8 +906,8 @@ select:focus-visible {
 
 .closed-cover {
     position: relative;
-    width: min(100%, 28rem);
-    min-height: 60vh;
+    width: min(100%, 100vw);
+    min-height: 80vh;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -948,15 +971,15 @@ select:focus-visible {
 }
 
 .card-slot[draggable="true"] {
-  cursor: grab;
+    cursor: grab;
 }
 
 .card-slot[draggable="true"]:active {
-  cursor: grabbing;
+    cursor: grabbing;
 }
 
 .card-slot.unowned {
-    opacity: 0.8;
+    opacity: 0.5;
 }
 
 .card-slot.owned {
@@ -1039,28 +1062,62 @@ select:focus-visible {
 }
 
 .slot-remove {
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.25rem;
+    right: 0.25rem;
+    z-index: 5;
     width: 1.5rem;
     height: 1.5rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
     color: white;
-    background: #111722ef;
-    border: 0.1rem solid #ffffff2b;
+    background: #dc2626;
+    border: 0.1rem solid #fca5a5;
     border-radius: 0.5rem;
-    font-size: 1rem;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.slot-remove:hover {
+    background: #b91c1c;
+}
+
+.slot-return {
+    position: absolute;
+    top: 2rem;
+    right: 0.25rem;
+    z-index: 5;
+    padding: 0.25rem;
+    color: white;
+    background: #334155ed;
+    border: 0.1rem solid #ffffff35;
+    border-radius: 0.25rem;
+    font-size: clamp(0.5rem, 0.7vw, 0.75rem);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+        opacity 150ms ease,
+        background 150ms ease;
+}
+
+.slot-return:hover {
+    background: #475569;
 }
 
 .owned-cards-button {
     right: 0.25rem;
     bottom: 0.25rem;
     left: 0.25rem;
-    padding: 0.1rem 0.25rem;
+    z-index: 5;
+    padding: 0.25rem;
     color: white;
     background: #111722ed;
     border: 0.1rem solid #ffffff35;
     border-radius: 0.25rem;
-    font-size: clamp(0.25rem, 0.5vw, 0.5rem);
+    font-size: clamp(0.5rem, 0.7vw, 0.75rem);
     font-weight: 500;
+    cursor: pointer;
 }
 
 .mass-mode-indicator {
@@ -1078,6 +1135,7 @@ select:focus-visible {
 .card-slot:hover .slot-upload,
 .card-slot:hover .owned-cards-button,
 .card-slot:hover .slot-remove,
+.card-slot:hover .slot-return,
 .card-slot:hover .mass-mode-indicator {
     opacity: 1;
 }
@@ -1086,6 +1144,7 @@ select:focus-visible {
     .slot-upload,
     .owned-cards-button,
     .slot-remove,
+    .slot-return,
     .mass-mode-indicator {
         opacity: 1;
     }
@@ -1127,7 +1186,8 @@ select:focus-visible {
     }
 
     .closed-cover {
-        min-height: 60vh;
+        min-height: 70vh;
+        width: min(100%, 30vw);
     }
 }
 
@@ -1166,16 +1226,18 @@ select:focus-visible {
     }
 
     .basket-popup {
-        position: absolute;
-        top: 0;
-        right: auto;
-        bottom: auto;
-        left: calc(100% + 0.75rem);
-        width: 22rem;
-        max-width: 70vw;
-        max-height: 12rem;
-        padding: 0.75rem;
-        transform: none;
+      position: absolute;
+      top: 0;
+      right: auto;
+      bottom: auto;
+      left: calc(100% + 0.75rem);
+      width: min(28rem, 70vw);
+      max-width: 70vw;
+      max-height: 14rem;
+      box-sizing: border-box;
+      overflow: hidden;
+      padding: 0.75rem;
+      transform: none;
     }
 
     .basket-popup-header {
@@ -1183,26 +1245,36 @@ select:focus-visible {
     }
 
     .basket-desktop-list {
-        display: flex;
-        gap: 0.75rem;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 0.125rem 0.125rem 0.5rem;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.75rem;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior-x: contain;
+      padding: 0.125rem 0.125rem 0.5rem;
+      scrollbar-width: auto;
+      scrollbar-color: #49536b #171b25;
     }
 
     .basket-desktop-list .basket-card {
-        flex: 0 0 4.25rem;
-        cursor: grab;
-        user-select: none;
+      flex: 0 0 4.25rem;
+      width: 4.25rem;
+      min-width: 4.25rem;
+      cursor: grab;
+      user-select: none;
     }
 
     .basket-desktop-list .basket-card:active {
-        cursor: grabbing;
+      cursor: grabbing;
     }
 
     .basket-desktop-list .basket-card img,
     .basket-desktop-list .basket-card-no-image {
-        width: 3.5rem;
+      width: 3.5rem;
     }
 
     .basket-desktop-list .basket-card span {
@@ -1282,6 +1354,9 @@ select:focus-visible {
     }
 
     .binder-viewer {
-        max-width: clamp(45rem, 50vw, 100rem);
+        width: 100%;
+        max-width: 90rem;
+        min-width: 0;
+        margin-inline: auto;
     }
 }

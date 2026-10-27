@@ -13,6 +13,8 @@ type GridOption = {
 type BinderSlot = {
   owned: boolean;
   image: string | null;
+  // keeps card data for returning to basket
+  card: NormalizedCard | null;
 };
 
 type BinderPage = {
@@ -47,6 +49,7 @@ function createPage(id: number): BinderPage {
     slots: Array.from({ length: MAX_SLOTS }, () => ({
       owned: false,
       image: null,
+      card: null,
     })),
   };
 }
@@ -84,6 +87,11 @@ function loadBinder(): BinderData {
           return {
             owned: Boolean(slot?.owned),
             image: typeof slot?.image === "string" ? slot.image : null,
+            // NOTE: Older saved slots won't have card data, so treat them as empty.
+            card:
+              slot?.card && typeof slot.card === "object"
+                ? (slot.card as NormalizedCard)
+                : null,
           };
         }),
       };
@@ -111,7 +119,11 @@ type BinderPageViewProps = {
   page: BinderPage;
   grid: GridOption;
   massMode: boolean;
-  updateSlot: (index: number, changes: Partial<BinderSlot>) => void;
+  updateSlot: (
+    pageId: number,
+    index: number,
+    changes: Partial<BinderSlot>,
+  ) => void;
   onDropBasketCard: (
     basketIndex: number,
     pageId: number,
@@ -123,6 +135,7 @@ type BinderPageViewProps = {
     targetPageId: number,
     targetSlotIndex: number,
   ) => void;
+  onReturnCardToBasket: (pageId: number, slotIndex: number) => void;
 };
 
 // renders one physical binder page so two pages can sit side by side
@@ -133,6 +146,7 @@ function BinderPageView({
   updateSlot,
   onDropBasketCard,
   onDropBinderCard,
+  onReturnCardToBasket,
 }: BinderPageViewProps) {
   const visibleCount = grid.rows * grid.cols;
 
@@ -144,13 +158,16 @@ function BinderPageView({
           gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
         }}
       >
+
         {page.slots.slice(0, visibleCount).map((slot, index) => (
           <article
             key={`${page.id}-${index}`}
             className={`card-slot ${slot.owned ? "owned" : "unowned"}`}
             draggable={Boolean(slot.image)}
             onClick={() => {
-              if (massMode) updateSlot(index, { owned: !slot.owned });
+              if (massMode) {
+                updateSlot(page.id, index, { owned: !slot.owned });
+              }
             }}
             onDragStart={(event) => {
               if (!slot.image) {
@@ -224,59 +241,108 @@ function BinderPageView({
               </div>
             )}
 
-            <label
-              className="slot-upload"
-              title="Upload artwork"
-              onClick={(event) => event.stopPropagation()}
-            >
-              ↑
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
+            {!slot.image && (
+              <label
+                className="slot-upload"
+                title="Upload artwork"
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.preventDefault()}
+              >
+                ↑
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
 
-                  if (
-                    !file.type.startsWith("image/") ||
-                    file.size > 5 * 1024 * 1024
-                  ) {
-                    alert("Choose an image smaller than 5 MB.");
-                    event.currentTarget.value = "";
-                    return;
-                  }
-
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    if (typeof reader.result === "string") {
-                      updateSlot(index, { image: reader.result });
+                    if (
+                      !file.type.startsWith("image/") ||
+                      file.size > 5 * 1024 * 1024
+                    ) {
+                      alert("Choose an image smaller than 5 MB.");
+                      event.currentTarget.value = "";
+                      return;
                     }
-                  };
-                  reader.readAsDataURL(file);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
+
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      if (typeof reader.result === "string") {
+                        updateSlot(page.id, index, {
+                          image: reader.result,
+                          card: null,
+                        });
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            )}
 
             {slot.image && (
-              <button
-                className="slot-remove"
-                title="Remove artwork"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  updateSlot(index, { image: null });
-                }}
-              >
-                ×
-              </button>
+              <>
+                {/* NOTE: Confirm removal and use a separate button to return basket cards. */}
+                <button
+                  type="button"
+                  className="slot-remove"
+                  title="Remove artwork"
+                  aria-label={`Remove artwork from page ${page.id}, pocket ${index + 1}`}
+                  draggable={false}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDragStart={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+
+                    if (
+                      window.confirm(
+                        "Remove this card from the binder? This will not return it to the basket.",
+                      )
+                    ) {
+                      updateSlot(page.id, index, {
+                        image: null,
+                        card: null,
+                        owned: false,
+                      });
+                    }
+                  }}
+                >
+                  ×
+                </button>
+
+                {/* NOTE: Only cards originally placed from the basket can be returned. */}
+                {slot.card && (
+                  <button
+                    type="button"
+                    className="slot-return"
+                    title="Return card to basket"
+                    aria-label={`Return ${slot.card.name} to basket`}
+                    draggable={false}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onDragStart={(event) => event.preventDefault()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onReturnCardToBasket(page.id, index);
+                    }}
+                  >
+                    ↩
+                  </button>
+                )}
+              </>
             )}
 
             {!massMode && (
               <button
+                type="button"
                 className="owned-cards-button"
+                draggable={false}
+                onPointerDown={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.preventDefault()}
                 onClick={(event) => {
                   event.stopPropagation();
-                  updateSlot(index, { owned: !slot.owned });
+                  updateSlot(page.id, index, { owned: !slot.owned });
                 }}
               >
                 {slot.owned ? "✓ Owned" : "Mark owned"}
@@ -354,7 +420,7 @@ function App() {
               ...page,
               slots: page.slots.map((slot, index) =>
                 index === slotIndex
-                  ? { ...slot, image: card.imageUrl!, owned: true }
+                  ? { ...slot, image: card.imageUrl!, owned: true, card }
                   : slot,
               ),
             },
@@ -366,6 +432,35 @@ function App() {
       previous.filter((_, index) => index !== basketIndex),
     );
     setBasketPage(0);
+  }
+
+  function returnCardToBasket(pageId: number, slotIndex: number) {
+    const page = data.pages.find((item) => item.id === pageId);
+    const slot = page?.slots[slotIndex];
+
+    if (!slot?.image || !slot.card) {
+      alert("No card to be returned.");
+      return;
+    }
+
+    setBasket((previous) => [...previous, slot.card!]);
+    setBasketPage(0);
+
+    setData((previous) => ({
+      ...previous,
+      pages: previous.pages.map((item) =>
+        item.id !== pageId
+          ? item
+          : {
+              ...item,
+              slots: item.slots.map((currentSlot, index) =>
+                index === slotIndex
+                  ? { owned: false, image: null, card: null }
+                  : currentSlot,
+              ),
+            },
+      ),
+    }));
   }
 
   function moveBinderCard(
@@ -415,7 +510,7 @@ function App() {
                 if (index === sourceSlotIndex) {
                   return targetSlot.image
                     ? { ...targetSlot }
-                    : { owned: false, image: null };
+                    : { owned: false, image: null, card: null };
                 }
 
                 if (index === targetSlotIndex) {
@@ -429,7 +524,7 @@ function App() {
               if (page.id === sourcePageId && index === sourceSlotIndex) {
                 return targetSlot.image
                   ? { ...targetSlot }
-                  : { owned: false, image: null };
+                  : { owned: false, image: null, card: null };
               }
 
               // for dragging onto slot
@@ -495,11 +590,15 @@ function App() {
     setData((previous) => ({ ...previous, ...changes }));
   }
 
-  function updateSlot(index: number, changes: Partial<BinderSlot>) {
+  function updateSlot(
+    pageId: number,
+    index: number,
+    changes: Partial<BinderSlot>,
+  ) {
     setData((previous) => ({
       ...previous,
       pages: previous.pages.map((page) =>
-        page.id !== previous.currentPage
+        page.id !== pageId
           ? page
           : {
               ...page,
@@ -637,10 +736,7 @@ function App() {
       </header>
 
       <div hidden={activeTab !== "cards"}>
-        <CardsTab
-          onAddToBasket={addToBasket}
-          basketCount={basket.length}
-        />
+        <CardsTab onAddToBasket={addToBasket} basketCount={basket.length} />
       </div>
 
       <div hidden={activeTab !== "binder"}>
@@ -853,6 +949,26 @@ function App() {
                     <section
                       className="basket-popup"
                       aria-label="Card basket"
+                      // allows for mouse scrolling
+                      onWheel={(event) => {
+                        if (window.innerWidth < 768) return;
+
+                        const list =
+                          event.currentTarget.querySelector<HTMLElement>(
+                            ".basket-desktop-list",
+                          );
+
+                        if (!list || list.scrollWidth <= list.clientWidth) return;
+
+                        if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+                          event.preventDefault();
+                          list.scrollBy({
+                            // less harsh deltay for horiz scrolling
+                            left: event.deltaY * 0.4,
+                            behavior: "smooth",
+                          });
+                        }
+                      }}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={(event) => {
                         event.preventDefault();
@@ -1095,6 +1211,7 @@ function App() {
                     updateSlot={updateSlot}
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
+                    onReturnCardToBasket={returnCardToBasket}
                   />
                 </div>
               )}
@@ -1119,6 +1236,7 @@ function App() {
                             updateSlot={updateSlot}
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
+                            onReturnCardToBasket={returnCardToBasket}
                           />
                         ) : (
                           <div
@@ -1135,6 +1253,7 @@ function App() {
                             updateSlot={updateSlot}
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
+                            onReturnCardToBasket={returnCardToBasket}
                           />
                         ) : (
                           <div
@@ -1157,6 +1276,7 @@ function App() {
                     updateSlot={updateSlot}
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
+                    onReturnCardToBasket={returnCardToBasket}
                   />
 
                   <div
@@ -1182,9 +1302,8 @@ function App() {
               </span>
             </footer>
           </main>
-            </div>
         </div>
-
+      </div>
     </div>
   );
 }
