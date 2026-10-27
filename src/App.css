@@ -1226,18 +1226,18 @@ select:focus-visible {
     }
 
     .basket-popup {
-      position: absolute;
-      top: 0;
-      right: auto;
-      bottom: auto;
-      left: calc(100% + 0.75rem);
-      width: min(28rem, 70vw);
-      max-width: 70vw;
-      max-height: 14rem;
-      box-sizing: border-box;
-      overflow: hidden;
-      padding: 0.75rem;
-      transform: none;
+        position: absolute;
+        top: 0;
+        right: auto;
+        bottom: auto;
+        left: calc(100% + 0.75rem);
+        width: min(28rem, 70vw);
+        max-width: 70vw;
+        max-height: 14rem;
+        box-sizing: border-box;
+        overflow: hidden;
+        padding: 0.75rem;
+        transform: none;
     }
 
     .basket-popup-header {
@@ -1245,40 +1245,40 @@ select:focus-visible {
     }
 
     .basket-desktop-list {
-      display: flex;
-      flex-wrap: nowrap;
-      gap: 0.75rem;
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-      box-sizing: border-box;
-      overflow-x: auto;
-      overflow-y: hidden;
-      overscroll-behavior-x: contain;
-      padding: 0.125rem 0.125rem 0.5rem;
-      scrollbar-width: auto;
-      scrollbar-color: #49536b #171b25;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.75rem;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        padding: 0.125rem 0.125rem 0.5rem;
+        scrollbar-width: auto;
+        scrollbar-color: #49536b #171b25;
     }
 
     .basket-desktop-list .basket-card {
-      flex: 0 0 4.25rem;
-      width: 4.25rem;
-      min-width: 4.25rem;
-      cursor: grab;
-      user-select: none;
+        flex: 0 0 4.25rem;
+        width: 4.25rem;
+        min-width: 4.25rem;
+        cursor: grab;
+        user-select: none;
     }
 
     .basket-desktop-list .basket-card:active {
-      cursor: grabbing;
+        cursor: grabbing;
     }
 
     .basket-desktop-list .basket-card img,
     .basket-desktop-list .basket-card-no-image {
-      width: 3.5rem;
+        width: 3.5rem;
     }
 
     .basket-desktop-list .basket-card span {
-        font-size: 0.6875rem;
+        font-size: 0.75rem;
     }
 
     .basket-mobile-list,
