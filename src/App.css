@@ -531,7 +531,7 @@ select:focus-visible {
     min-width: 0;
     width: 100%;
     margin: 0 auto;
-    padding: 1.5rem 0.75rem 1rem;
+    padding: 1rem;
 }
 
 .binder-toolbar {
@@ -819,6 +819,7 @@ select:focus-visible {
     border: 0.1rem solid #303849;
     border-radius: 0.75rem;
     box-shadow: 0 1.5rem 3rem #00000025;
+    min-width: 60vw;
 }
 
 .binder-page {
@@ -944,6 +945,14 @@ select:focus-visible {
         opacity 150ms ease,
         border-color 150ms ease,
         transform 150ms ease;
+}
+
+.card-slot[draggable="true"] {
+  cursor: grab;
+}
+
+.card-slot[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .card-slot.unowned {
@@ -1126,7 +1135,7 @@ select:focus-visible {
 @media (min-width: 48rem) {
     .topbar {
         position: sticky;
-        min-height: 12vh;
+        min-height: 8vh;
         padding: 0 1rem;
         flex-wrap: nowrap;
         gap: 1rem;
