@@ -82,6 +82,38 @@ select:focus-visible {
     outline-offset: 0.2rem;
 }
 
+button:not(:disabled) {
+    transition:
+        transform 120ms ease,
+        filter 120ms ease,
+        background-color 150ms ease,
+        border-color 150ms ease;
+}
+
+button:not(:disabled):active {
+    transform: scale(0.9);
+    filter: brightness(0.5);
+}
+
+button:disabled {
+    transform: none;
+}
+
+@media (hover: hover) {
+    button:not(:disabled):hover {
+        filter: brightness(1.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button,
+    .card-slot,
+    .catalogue-card {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}
+
 /* ---------- 2. App shell, top bar & navigation ---------- */
 
 .app-shell {
@@ -1176,6 +1208,35 @@ select:focus-visible {
     .slot-return,
     .mass-mode-indicator {
         opacity: 1;
+    }
+}
+
+/*feedback*/
+.card-slot.combine-selected {
+    z-index: 3;
+    border: 0.2rem solid #a5b4fc;
+    box-shadow:
+        0 0 0 0.2rem #6375e866,
+        0 0 1.25rem #8194ff99;
+    animation: combine-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.card-slot.combine-selected::after {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    content: "";
+    background: #8194ff18;
+    pointer-events: none;
+}
+
+@keyframes combine-pulse {
+    from {
+        box-shadow: 0 0 0 0.125rem #6375e866;
+    }
+
+    to {
+        box-shadow: 0 0 0 0.3rem #8194ff99;
     }
 }
 
