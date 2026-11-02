@@ -17,9 +17,15 @@ type BinderSlot = {
   card: NormalizedCard | null;
 };
 
+type CombinedSlot = {
+  id: string;
+  slots: [number, number];
+};
+
 type BinderPage = {
   id: number;
   slots: BinderSlot[];
+  combinedSlots: CombinedSlot[];
 };
 
 type BinderData = {
@@ -51,6 +57,7 @@ function createPage(id: number): BinderPage {
       image: null,
       card: null,
     })),
+    combinedSlots: [],
   };
 }
 
@@ -87,13 +94,26 @@ function loadBinder(): BinderData {
           return {
             owned: Boolean(slot?.owned),
             image: typeof slot?.image === "string" ? slot.image : null,
-            // NOTE: Older saved slots won't have card data, so treat them as empty.
             card:
               slot?.card && typeof slot.card === "object"
                 ? (slot.card as NormalizedCard)
                 : null,
           };
         }),
+        //
+        combinedSlots: Array.isArray(page.combinedSlots)
+          ? page.combinedSlots.filter(
+              (merge: CombinedSlot) =>
+                Array.isArray(merge.slots) &&
+                merge.slots.length === 2 &&
+                merge.slots.every(
+                  (slotIndex: number) =>
+                    Number.isInteger(slotIndex) &&
+                    slotIndex >= 0 &&
+                    slotIndex < MAX_SLOTS,
+                ),
+            )
+          : [],
       };
     });
 
@@ -136,6 +156,10 @@ type BinderPageViewProps = {
     targetSlotIndex: number,
   ) => void;
   onReturnCardToBasket: (pageId: number, slotIndex: number) => void;
+  combineMode: boolean;
+  selectedCombineSlot: number | null;
+  onSelectCombineSlot: (pageId: number, slotIndex: number) => void;
+  onRemoveCombinedSlot: (pageId: number, mergeId: string) => void;
 };
 
 // renders one physical binder page so two pages can sit side by side
@@ -147,8 +171,24 @@ function BinderPageView({
   onDropBasketCard,
   onDropBinderCard,
   onReturnCardToBasket,
+  combineMode,
+  selectedCombineSlot,
+  onSelectCombineSlot,
+  onRemoveCombinedSlot,
 }: BinderPageViewProps) {
   const visibleCount = grid.rows * grid.cols;
+  // render merges that fit the current grid and visible area
+  const validMerges = page.combinedSlots.filter(
+    (merge) =>
+      merge.slots.every((index) => index < visibleCount) &&
+      areAdjacentSlots(merge.slots[0], merge.slots[1], grid.cols),
+  );
+
+  const mergeBySlot = new Map(
+    validMerges.map((merge) => [merge.slots[0], merge]),
+  );
+
+  const hiddenMergedSlots = new Set(validMerges.map((merge) => merge.slots[1]));
 
   return (
     <div className="binder-page">
@@ -158,204 +198,251 @@ function BinderPageView({
           gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
         }}
       >
+        {page.slots.slice(0, visibleCount).map((slot, index) => {
+          if (hiddenMergedSlots.has(index)) return null;
 
-        {page.slots.slice(0, visibleCount).map((slot, index) => (
-          <article
-            key={`${page.id}-${index}`}
-            className={`card-slot ${slot.owned ? "owned" : "unowned"}`}
-            draggable={Boolean(slot.image)}
-            onClick={() => {
-              if (massMode) {
-                updateSlot(page.id, index, { owned: !slot.owned });
-              }
-            }}
-            onDragStart={(event) => {
-              if (!slot.image) {
-                event.preventDefault();
-                return;
-              }
+          const merge = mergeBySlot.get(index);
+          const nextIndex = merge?.slots[1];
+          const isHorizontalMerge =
+            merge !== undefined &&
+            nextIndex !== undefined &&
+            Math.floor(index / grid.cols) === Math.floor(nextIndex / grid.cols);
 
-              event.dataTransfer.setData(
-                "text/plain",
-                `binder:${page.id}:${index}`,
-              );
+          const isVerticalMerge = merge !== undefined && !isHorizontalMerge;
 
-              event.dataTransfer.effectAllowed = "move";
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-
-              const dragData = event.dataTransfer.getData("text/plain");
-
-              if (dragData.startsWith("binder:")) {
-                const [, sourcePage, sourceIndex] = dragData.split(":");
-
-                const sourcePageId = Number(sourcePage);
-                const sourceSlotIndex = Number(sourceIndex);
-
-                if (
-                  Number.isInteger(sourcePageId) &&
-                  Number.isInteger(sourceSlotIndex)
-                ) {
-                  onDropBinderCard(
-                    sourcePageId,
-                    sourceSlotIndex,
-                    page.id,
-                    index,
-                  );
+          return (
+            <article
+              key={`${page.id}-${index}`}
+              className={[
+                "card-slot",
+                slot.card ? (slot.owned ? "owned" : "unowned") : "",
+                merge ? "combined-slot" : "",
+                combineMode && selectedCombineSlot === index
+                  ? "combine-selected"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={{
+                gridColumn: isHorizontalMerge ? "span 2" : undefined,
+                gridRow: isVerticalMerge ? "span 2" : undefined,
+                aspectRatio: merge ? "auto" : undefined,
+              }}
+              draggable={Boolean(slot.card) && !combineMode}
+              onClick={() => {
+                if (combineMode) {
+                  if (!merge) onSelectCombineSlot(page.id, index);
+                  return;
                 }
 
-                return;
-              }
+                if (massMode && slot.card) {
+                  updateSlot(page.id, index, { owned: !slot.owned });
+                }
+              }}
+              onDragStart={(event) => {
+                if (combineMode || !slot.card) {
+                  event.preventDefault();
+                  return;
+                }
 
-              if (slot.image) return;
+                event.dataTransfer.setData(
+                  "text/plain",
+                  `binder:${page.id}:${index}`,
+                );
 
-              const basketIndex = dragData.startsWith("basket:")
-                ? Number(dragData.slice("basket:".length))
-                : Number(dragData);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                // prevents dropping into merged slot
+                if (combineMode || merge) return;
 
-              if (!Number.isInteger(basketIndex) || basketIndex < 0) return;
+                const dragData = event.dataTransfer.getData("text/plain");
 
-              onDropBasketCard(basketIndex, page.id, index);
-            }}
-          >
-            {slot.image ? (
-              <img
-                className="slot-image"
-                src={slot.image}
-                alt={`Page ${page.id}, pocket ${index + 1}`}
-                draggable={false}
-              />
-            ) : (
-              <div className="slot-placeholder">
-                <span className="slot-number">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="slot-plus">+</span>
-                <span className="slot-prompt">Add artwork</span>
-              </div>
-            )}
+                if (dragData.startsWith("binder:")) {
+                  const [, sourcePage, sourceIndex] = dragData.split(":");
 
-            {!slot.image && (
-              <label
-                className="slot-upload"
-                title="Upload artwork"
-                onClick={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                onDragStart={(event) => event.preventDefault()}
-              >
-                ↑
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
+                  const sourcePageId = Number(sourcePage);
+                  const sourceSlotIndex = Number(sourceIndex);
 
-                    if (
-                      !file.type.startsWith("image/") ||
-                      file.size > 5 * 1024 * 1024
-                    ) {
-                      alert("Choose an image smaller than 5 MB.");
-                      event.currentTarget.value = "";
-                      return;
-                    }
+                  if (
+                    Number.isInteger(sourcePageId) &&
+                    Number.isInteger(sourceSlotIndex)
+                  ) {
+                    onDropBinderCard(
+                      sourcePageId,
+                      sourceSlotIndex,
+                      page.id,
+                      index,
+                    );
+                  }
 
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      if (typeof reader.result === "string") {
-                        updateSlot(page.id, index, {
-                          image: reader.result,
-                          card: null,
-                        });
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </label>
-            )}
+                  return;
+                }
 
-            {slot.image && (
-              <>
-                {/* NOTE: Confirm removal and use a separate button to return basket cards. */}
+                if (slot.image) return;
+
+                const basketIndex = dragData.startsWith("basket:")
+                  ? Number(dragData.slice("basket:".length))
+                  : Number(dragData);
+
+                if (!Number.isInteger(basketIndex) || basketIndex < 0) return;
+
+                onDropBasketCard(basketIndex, page.id, index);
+              }}
+            >
+              {combineMode && merge && (
                 <button
                   type="button"
-                  className="slot-remove"
-                  title="Remove artwork"
-                  aria-label={`Remove artwork from page ${page.id}, pocket ${index + 1}`}
-                  draggable={false}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onDragStart={(event) => event.preventDefault()}
+                  className="combined-slot-remove"
+                  title="Separate these slots"
+                  aria-label={`Separate combined slots on page ${page.id}`}
                   onClick={(event) => {
                     event.stopPropagation();
-
-                    if (
-                      window.confirm(
-                        "Remove this card from the binder? This will not return it to the basket.",
-                      )
-                    ) {
-                      updateSlot(page.id, index, {
-                        image: null,
-                        card: null,
-                        owned: false,
-                      });
-                    }
+                    onRemoveCombinedSlot(page.id, merge.id);
                   }}
                 >
                   ×
                 </button>
+              )}
+              {slot.image ? (
+                <img
+                  className="slot-image"
+                  src={slot.image}
+                  alt={`Page ${page.id}, pocket ${index + 1}`}
+                  draggable={false}
+                />
+              ) : (
+                <div className="slot-placeholder">
+                  <span className="slot-number">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="slot-plus">+</span>
+                  <span className="slot-prompt">Add artwork</span>
+                </div>
+              )}
 
-                {/* NOTE: Only cards originally placed from the basket can be returned. */}
-                {slot.card && (
+              {!combineMode && !slot.image && (
+                <label
+                  className="slot-upload"
+                  title="Upload artwork"
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDragStart={(event) => event.preventDefault()}
+                >
+                  ↑
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+
+                      if (
+                        !file.type.startsWith("image/") ||
+                        file.size > 5 * 1024 * 1024
+                      ) {
+                        alert("Choose an image smaller than 5 MB.");
+                        event.currentTarget.value = "";
+                        return;
+                      }
+
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        if (typeof reader.result === "string") {
+                          updateSlot(page.id, index, {
+                            image: reader.result,
+                            card: null,
+                            owned: false,
+                          });
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              )}
+
+              {!combineMode && slot.image && (
+                <>
                   <button
                     type="button"
-                    className="slot-return"
-                    title="Return card to basket"
-                    aria-label={`Return ${slot.card.name} to basket`}
+                    className="slot-remove"
+                    title="Remove artwork"
+                    aria-label={`Remove artwork from page ${page.id}, pocket ${index + 1}`}
                     draggable={false}
                     onPointerDown={(event) => event.stopPropagation()}
                     onDragStart={(event) => event.preventDefault()}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onReturnCardToBasket(page.id, index);
+
+                      if (
+                        window.confirm(
+                          "Remove this card from the binder? This will not return it to the basket.",
+                        )
+                      ) {
+                        updateSlot(page.id, index, {
+                          image: null,
+                          card: null,
+                          owned: false,
+                        });
+                      }
                     }}
                   >
-                    ↩
+                    ×
                   </button>
-                )}
-              </>
-            )}
 
-            {!massMode && (
-              <button
-                type="button"
-                className="owned-cards-button"
-                draggable={false}
-                onPointerDown={(event) => event.stopPropagation()}
-                onDragStart={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  updateSlot(page.id, index, { owned: !slot.owned });
-                }}
-              >
-                {slot.owned ? "✓ Owned" : "Mark owned"}
-              </button>
-            )}
+                  {/* only cards from basket will be returned */}
+                  {slot.card && (
+                    <button
+                      type="button"
+                      className="slot-return"
+                      title="Return card to basket"
+                      aria-label={`Return ${slot.card.name} to basket`}
+                      draggable={false}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onDragStart={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onReturnCardToBasket(page.id, index);
+                      }}
+                    >
+                      ↩
+                    </button>
+                  )}
+                </>
+              )}
 
-            {massMode && (
-              <span className="mass-mode-indicator">
-                {slot.owned ? "✓ Owned" : "Unowned"}
-              </span>
-            )}
-          </article>
-        ))}
+              {!combineMode && !massMode && slot.card && (
+                <button
+                  type="button"
+                  className="owned-cards-button"
+                  draggable={false}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDragStart={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    updateSlot(page.id, index, { owned: !slot.owned });
+                  }}
+                >
+                  {slot.owned ? "✓ Owned" : "Mark owned"}
+                </button>
+              )}
+
+              {!combineMode && massMode && slot.card && (
+                <span className="mass-mode-indicator">
+                  {slot.owned ? "✓ Owned" : "Unowned"}
+                </span>
+              )}
+            </article>
+          );
+        })}
       </div>
 
       <span className="binder-page-number">PAGE {page.id}</span>
@@ -363,9 +450,60 @@ function BinderPageView({
   );
 }
 
+// help function for checking adjacent slots
+function areAdjacentSlots(
+  firstIndex: number,
+  secondIndex: number,
+  cols: number,
+): boolean {
+  const firstRow = Math.floor(firstIndex / cols);
+  const firstCol = firstIndex % cols;
+  const secondRow = Math.floor(secondIndex / cols);
+  const secondCol = secondIndex % cols;
+
+  return (
+    (firstRow === secondRow && Math.abs(firstCol - secondCol) === 1) ||
+    (firstCol === secondCol && Math.abs(firstRow - secondRow) === 1)
+  );
+}
+// helper function for combined slots to not erase an existing card in a slot
+function canCombineSlots(
+  page: BinderPage,
+  firstIndex: number,
+  secondIndex: number,
+  cols: number,
+): boolean {
+  const firstSlot = page.slots[firstIndex];
+  const secondSlot = page.slots[secondIndex];
+
+  if (
+    !firstSlot ||
+    !secondSlot ||
+    firstSlot.image ||
+    firstSlot.card ||
+    secondSlot.image ||
+    secondSlot.card ||
+    !areAdjacentSlots(firstIndex, secondIndex, cols)
+  ) {
+    return false;
+  }
+
+  return !page.combinedSlots.some((merge) =>
+    merge.slots.some(
+      (slotIndex) => slotIndex === firstIndex || slotIndex === secondIndex,
+    ),
+  );
+}
+
 function App() {
   const [data, setData] = useState<BinderData>(loadBinder);
   const [massMode, setMassMode] = useState(false);
+  // Combined slots const
+  const [combineMode, setCombineMode] = useState(false);
+  const [selectedCombineSlot, setSelectedCombineSlot] = useState<{
+    pageId: number;
+    slotIndex: number;
+  } | null>(null);
   const [pageInput, setPageInput] = useState("20");
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [coverSide, setCoverSide] = useState<"front" | "back">("front");
@@ -400,12 +538,13 @@ function App() {
     const targetPage = data.pages.find((page) => page.id === pageId);
     const targetSlot = targetPage?.slots[slotIndex];
 
-    // place into empty pockets
+    // place into empty pockets, and unmerged slots
     if (
       !targetPage ||
       !targetSlot ||
       slotIndex >= visibleCount ||
-      targetSlot.image
+      targetSlot.image ||
+      targetPage.combinedSlots.some((merge) => merge.slots.includes(slotIndex))
     ) {
       return;
     }
@@ -575,6 +714,10 @@ function App() {
 
   const visibleCount = grid.rows * grid.cols;
 
+  const spreadStyle = {
+    maxWidth: `min(90rem, calc(75vh * ${(2 * grid.cols * 65) / (grid.rows * 90)}))`,
+  };
+
   // persist binder edits in this browser
   useEffect(() => {
     try {
@@ -604,6 +747,81 @@ function App() {
               ...page,
               slots: page.slots.map((slot, slotIndex) =>
                 slotIndex === index ? { ...slot, ...changes } : slot,
+              ),
+            },
+      ),
+    }));
+  }
+
+  // selects 2 grid slots to combine into a unified slot for art/misc etc.
+  function selectCombineSlot(pageId: number, slotIndex: number) {
+    const page = data.pages.find((item) => item.id === pageId);
+    if (!page || slotIndex >= visibleCount) return;
+
+    const slot = page.slots[slotIndex];
+
+    // Cards and existing merged slots cannot be part of a new merge.
+    if (
+      slot?.image ||
+      slot?.card ||
+      page.combinedSlots.some((merge) => merge.slots.includes(slotIndex))
+    ) {
+      return;
+    }
+
+    if (!selectedCombineSlot || selectedCombineSlot.pageId !== pageId) {
+      setSelectedCombineSlot({ pageId, slotIndex });
+      return;
+    }
+
+    const firstIndex = selectedCombineSlot.slotIndex;
+
+    if (firstIndex === slotIndex) {
+      setSelectedCombineSlot(null);
+      return;
+    }
+
+    if (!canCombineSlots(page, firstIndex, slotIndex, grid.cols)) {
+      alert("Choose an empty slot directly beside the selected slot.");
+      setSelectedCombineSlot({ pageId, slotIndex });
+      return;
+    }
+
+    setData((previous) => ({
+      ...previous,
+      pages: previous.pages.map((item) =>
+        item.id !== pageId
+          ? item
+          : {
+              ...item,
+              combinedSlots: [
+                ...item.combinedSlots,
+                {
+                  id: `${pageId}-${Math.min(firstIndex, slotIndex)}-${Math.max(firstIndex, slotIndex)}`,
+                  slots: [
+                    Math.min(firstIndex, slotIndex),
+                    Math.max(firstIndex, slotIndex),
+                  ] as [number, number],
+                },
+              ],
+            },
+      ),
+    }));
+
+    setSelectedCombineSlot(null);
+  }
+
+  // deleting merge restores original slots
+  function removeCombinedSlot(pageId: number, mergeId: string) {
+    setData((previous) => ({
+      ...previous,
+      pages: previous.pages.map((page) =>
+        page.id !== pageId
+          ? page
+          : {
+              ...page,
+              combinedSlots: page.combinedSlots.filter(
+                (merge) => merge.id !== mergeId,
               ),
             },
       ),
@@ -819,7 +1037,11 @@ function App() {
               <p className="field-label">Toggle Owned Cards</p>
               <button
                 className={`mode-button ${massMode ? "mode-enabled" : ""}`}
-                onClick={() => setMassMode((previous) => !previous)}
+                onClick={() => {
+                  setMassMode((previous) => !previous);
+                  setCombineMode(false);
+                  setSelectedCombineSlot(null);
+                }}
                 aria-pressed={massMode}
               >
                 <span className={`toggle-track ${massMode ? "toggle-on" : ""}`}>
@@ -838,6 +1060,43 @@ function App() {
                 {massMode
                   ? "Click any slot to switch between owned and unowned."
                   : "Hover over a slot to mark it owned."}
+              </p>
+            </section>
+
+            <div className="sidebar-divider" />
+
+            <section className="setting-group">
+              <p className="field-label">Combine Slots</p>
+
+              <button
+                className={`mode-button ${combineMode ? "mode-enabled" : ""}`}
+                onClick={() => {
+                  setCombineMode((previous) => !previous);
+                  setMassMode(false);
+                  setSelectedCombineSlot(null);
+                }}
+                aria-pressed={combineMode}
+              >
+                <span
+                  className={`toggle-track ${combineMode ? "toggle-on" : ""}`}
+                >
+                  <span className="toggle-thumb" />
+                </span>
+
+                <span>
+                  <strong>Combine mode</strong>
+                  <small>
+                    {combineMode
+                      ? "Select two adjacent empty slots"
+                      : "Merge empty slots"}
+                  </small>
+                </span>
+              </button>
+
+              <p className="help-text">
+                {combineMode
+                  ? "Select two adjacent empty slots. Click × to separate a merged slot."
+                  : "Combine two horizontally or vertically adjacent empty slots."}
               </p>
             </section>
 
@@ -958,7 +1217,8 @@ function App() {
                             ".basket-desktop-list",
                           );
 
-                        if (!list || list.scrollWidth <= list.clientWidth) return;
+                        if (!list || list.scrollWidth <= list.clientWidth)
+                          return;
 
                         if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
                           event.preventDefault();
@@ -1194,7 +1454,7 @@ function App() {
               )}
 
               {viewMode === "inside" && (
-                <div className="binder-spread">
+                <div className="binder-spread" style={spreadStyle}>
                   <div
                     className="inside-cover"
                     style={{ backgroundColor: data.coverColor }}
@@ -1208,6 +1468,14 @@ function App() {
                     }
                     grid={grid}
                     massMode={massMode}
+                    combineMode={combineMode}
+                    selectedCombineSlot={
+                      selectedCombineSlot?.pageId === 1
+                        ? selectedCombineSlot.slotIndex
+                        : null
+                    }
+                    onSelectCombineSlot={selectCombineSlot}
+                    onRemoveCombinedSlot={removeCombinedSlot}
                     updateSlot={updateSlot}
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
@@ -1217,7 +1485,7 @@ function App() {
               )}
 
               {viewMode === "pages" && (
-                <div className="binder-spread">
+                <div className="binder-spread" style={spreadStyle}>
                   {(() => {
                     const leftPage = data.pages.find(
                       (page) => page.id === spreadStart,
@@ -1233,6 +1501,14 @@ function App() {
                             page={leftPage}
                             grid={grid}
                             massMode={massMode}
+                            combineMode={combineMode}
+                            selectedCombineSlot={
+                              selectedCombineSlot?.pageId === leftPage.id
+                                ? selectedCombineSlot.slotIndex
+                                : null
+                            }
+                            onSelectCombineSlot={selectCombineSlot}
+                            onRemoveCombinedSlot={removeCombinedSlot}
                             updateSlot={updateSlot}
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
@@ -1250,6 +1526,14 @@ function App() {
                             page={rightPage}
                             grid={grid}
                             massMode={massMode}
+                            combineMode={combineMode}
+                            selectedCombineSlot={
+                              selectedCombineSlot?.pageId === rightPage.id
+                                ? selectedCombineSlot.slotIndex
+                                : null
+                            }
+                            onSelectCombineSlot={selectCombineSlot}
+                            onRemoveCombinedSlot={removeCombinedSlot}
                             updateSlot={updateSlot}
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
@@ -1268,11 +1552,20 @@ function App() {
               )}
 
               {viewMode === "back" && (
-                <div className="binder-spread">
+                <div className="binder-spread" style={spreadStyle}>
                   <BinderPageView
                     page={data.pages[data.pages.length - 1]}
                     grid={grid}
                     massMode={massMode}
+                    combineMode={combineMode}
+                    selectedCombineSlot={
+                      selectedCombineSlot?.pageId ===
+                      data.pages[data.pages.length - 1].id
+                        ? selectedCombineSlot.slotIndex
+                        : null
+                    }
+                    onSelectCombineSlot={selectCombineSlot}
+                    onRemoveCombinedSlot={removeCombinedSlot}
                     updateSlot={updateSlot}
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
