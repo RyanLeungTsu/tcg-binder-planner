@@ -3,6 +3,8 @@ import "./App.css";
 //card imports
 import CardsTab from "./cards/CardsTab";
 import type { NormalizedCard } from "./cards/types";
+// component imports
+import Basket from "./components/Basket";
 
 type GridOption = {
   label: string;
@@ -285,7 +287,7 @@ function BinderPageView({
                   return;
                 }
 
-                if (slot.image) return;
+                if (slot.card) return;
 
                 const basketIndex = dragData.startsWith("basket:")
                   ? Number(dragData.slice("basket:".length))
@@ -314,9 +316,14 @@ function BinderPageView({
                 <img
                   className="slot-image"
                   src={slot.image}
-                  alt={`Page ${page.id}, pocket ${index + 1}`}
+                  alt={slot.card?.name ?? `Page ${page.id}, pocket ${index + 1}`}
                   draggable={false}
                 />
+              ) : slot.card ? (
+                <div className="slot-no-image">
+                  <span>{slot.card.name}</span>
+                  <small>{slot.card.game.toUpperCase()}</small>
+                </div>
               ) : (
                 <div className="slot-placeholder">
                   <span className="slot-number">
@@ -479,9 +486,7 @@ function canCombineSlots(
   if (
     !firstSlot ||
     !secondSlot ||
-    firstSlot.image ||
     firstSlot.card ||
-    secondSlot.image ||
     secondSlot.card ||
     !areAdjacentSlots(firstIndex, secondIndex, cols)
   ) {
@@ -523,6 +528,17 @@ function App() {
     setBasketPage(0);
   }
 
+  // removes card in basket using position in the list
+  function removeBasketCard(basketIndex: number) {
+    setBasket((previous) =>
+      previous.filter((_, index) => index !== basketIndex),
+    );
+
+    setBasketPage((previous) =>
+      Math.min(previous, Math.max(0, Math.ceil((basket.length - 1) / 8) - 1)),
+    );
+  }
+
   // for placing basket cards into a binder
   function placeBasketCard(
     basketIndex: number,
@@ -531,7 +547,7 @@ function App() {
   ) {
     const card = basket[basketIndex];
     // for invalid drags
-    if (!Number.isInteger(basketIndex) || basketIndex < 0 || !card?.imageUrl) {
+    if (!Number.isInteger(basketIndex) || basketIndex < 0 || !card) {
       return;
     }
 
@@ -543,7 +559,7 @@ function App() {
       !targetPage ||
       !targetSlot ||
       slotIndex >= visibleCount ||
-      targetSlot.image ||
+      targetSlot.card ||
       targetPage.combinedSlots.some((merge) => merge.slots.includes(slotIndex))
     ) {
       return;
@@ -559,7 +575,12 @@ function App() {
               ...page,
               slots: page.slots.map((slot, index) =>
                 index === slotIndex
-                  ? { ...slot, image: card.imageUrl!, owned: true, card }
+                  ? {
+                      ...slot,
+                      image: card.imageUrl ?? null,
+                      owned: true,
+                      card,
+                    }
                   : slot,
               ),
             },
@@ -762,7 +783,6 @@ function App() {
 
     // Cards and existing merged slots cannot be part of a new merge.
     if (
-      slot?.image ||
       slot?.card ||
       page.combinedSlots.some((merge) => merge.slots.includes(slotIndex))
     ) {
@@ -954,7 +974,18 @@ function App() {
       </header>
 
       <div hidden={activeTab !== "cards"}>
-        <CardsTab onAddToBasket={addToBasket} basketCount={basket.length} />
+        <CardsTab
+          onAddToBasket={addToBasket}
+          basketCount={basket.length}
+          basket={basket}
+          basketOpen={basketOpen}
+          basketPage={basketPage}
+          onToggleBasket={() => setBasketOpen((open) => !open)}
+          onCloseBasket={() => setBasketOpen(false)}
+          onBasketPageChange={setBasketPage}
+          onAddBasketCardToPage={addBasketCardToPage}
+          onRemoveBasketCard={removeBasketCard}
+        />
       </div>
 
       <div hidden={activeTab !== "binder"}>
@@ -1187,198 +1218,16 @@ function App() {
                 </p>
               </div>
 
-              <div className="basket-anchor">
-                <button
-                  className="button button-primary basket-toggle"
-                  onClick={() => setBasketOpen((previous) => !previous)}
-                  aria-expanded={basketOpen}
-                  aria-label={`Open card basket, ${basket.length} cards`}
-                >
-                  Basket ({basket.length})
-                </button>
-
-                {basketOpen && (
-                  <>
-                    <button
-                      className="basket-backdrop"
-                      aria-label="Close basket"
-                      onClick={() => setBasketOpen(false)}
-                    />
-
-                    <section
-                      className="basket-popup"
-                      aria-label="Card basket"
-                      // allows for mouse scrolling
-                      onWheel={(event) => {
-                        if (window.innerWidth < 768) return;
-
-                        const list =
-                          event.currentTarget.querySelector<HTMLElement>(
-                            ".basket-desktop-list",
-                          );
-
-                        if (!list || list.scrollWidth <= list.clientWidth)
-                          return;
-
-                        if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-                          event.preventDefault();
-                          list.scrollBy({
-                            // less harsh deltay for horiz scrolling
-                            left: event.deltaY * 0.4,
-                            behavior: "smooth",
-                          });
-                        }
-                      }}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                    >
-                      <div className="basket-popup-header">
-                        <div>
-                          <strong>Your card basket</strong>
-                          <p>{basket.length} cards waiting to be placed</p>
-                        </div>
-
-                        <button
-                          className="basket-close"
-                          onClick={() => setBasketOpen(false)}
-                          aria-label="Close basket"
-                        >
-                          ×
-                        </button>
-                      </div>
-
-                      {basket.length === 0 ? (
-                        <p className="help-text">
-                          Your basket is empty. Visit the Cards tab to add some.
-                        </p>
-                      ) : (
-                        <>
-                          {/* desktop will be horiz scroll. */}
-                          <div className="basket-desktop-list">
-                            {basket.map((card, index) => (
-                              <article
-                                className="basket-card"
-                                key={`${card.id}-${index}`}
-                                draggable={Boolean(card.imageUrl)}
-                                onDragStart={(event) => {
-                                  if (!card.imageUrl) {
-                                    event.preventDefault();
-                                    return;
-                                  }
-
-                                  event.dataTransfer.setData(
-                                    "text/plain",
-                                    `basket:${index}`,
-                                  );
-                                  event.dataTransfer.effectAllowed = "move";
-                                }}
-                                title={
-                                  card.imageUrl
-                                    ? `Drag ${card.name} onto an empty binder pocket`
-                                    : "This card has no available image"
-                                }
-                              >
-                                {card.imageUrl ? (
-                                  <img
-                                    src={card.imageUrl}
-                                    alt={card.name}
-                                    draggable={false}
-                                  />
-                                ) : (
-                                  <div className="basket-card-no-image">
-                                    No image
-                                  </div>
-                                )}
-
-                                <span>{card.name}</span>
-                                <small>{card.game.toUpperCase()}</small>
-                              </article>
-                            ))}
-                          </div>
-
-                          {/* mobile, page layout */}
-                          <div className="basket-mobile-list">
-                            {basket
-                              .slice(basketPage * 8, basketPage * 8 + 8)
-                              .map((card, visibleIndex) => {
-                                const basketIndex =
-                                  basketPage * 8 + visibleIndex;
-
-                                return (
-                                  <article
-                                    className="basket-card"
-                                    key={`${card.id}-${basketIndex}`}
-                                  >
-                                    {card.imageUrl ? (
-                                      <img
-                                        src={card.imageUrl}
-                                        alt={card.name}
-                                      />
-                                    ) : (
-                                      <div className="basket-card-no-image">
-                                        No image
-                                      </div>
-                                    )}
-
-                                    <span title={card.name}>{card.name}</span>
-
-                                    <button
-                                      className="button button-secondary basket-add-button"
-                                      disabled={!card.imageUrl}
-                                      onClick={() =>
-                                        addBasketCardToPage(basketIndex)
-                                      }
-                                    >
-                                      Add to page
-                                    </button>
-                                  </article>
-                                );
-                              })}
-                          </div>
-
-                          <div className="basket-mobile-pagination">
-                            <button
-                              className="button button-secondary"
-                              onClick={() =>
-                                setBasketPage((previous) =>
-                                  Math.max(0, previous - 1),
-                                )
-                              }
-                              disabled={basketPage === 0}
-                            >
-                              ← Previous
-                            </button>
-
-                            <span>
-                              {basketPage + 1} / {Math.ceil(basket.length / 8)}
-                            </span>
-
-                            <button
-                              className="button button-secondary"
-                              onClick={() =>
-                                setBasketPage((previous) =>
-                                  Math.min(
-                                    Math.ceil(basket.length / 8) - 1,
-                                    previous + 1,
-                                  ),
-                                )
-                              }
-                              disabled={
-                                basketPage >= Math.ceil(basket.length / 8) - 1
-                              }
-                            >
-                              Next →
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </section>
-                  </>
-                )}
-              </div>
+              <Basket
+                basket={basket}
+                basketOpen={basketOpen}
+                basketPage={basketPage}
+                onToggle={() => setBasketOpen((previous) => !previous)}
+                onClose={() => setBasketOpen(false)}
+                onPageChange={setBasketPage}
+                onAddToPage={addBasketCardToPage}
+                onRemoveCard={removeBasketCard}
+              />
 
               {/* move through the physical binder in reading order. */}
               <div className="pagination">

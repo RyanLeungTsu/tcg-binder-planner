@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { CARD_PROVIDERS } from "./providers";
+import { CARD_PROVIDERS } from "../cards/providers";
 import type { CardGameId, CardSet, NormalizedCard } from "./types";
 import "./CardsTab.css";
+// component imports
+import Basket from "../components/Basket";
 
 type CardsTabProps = {
   onAddToBasket?: (card: NormalizedCard) => void;
   basketCount?: number;
+  basket: NormalizedCard[];
+  basketOpen: boolean;
+  basketPage: number;
+  onToggleBasket: () => void;
+  onCloseBasket: () => void;
+  onBasketPageChange: (page: number) => void;
+  onAddBasketCardToPage: (basketIndex: number) => void;
+  onRemoveBasketCard: (basketIndex: number) => void;
 };
 
 const PAGE_SIZE = 20;
@@ -20,6 +30,14 @@ const GAME_OPTIONS: Array<{ value: CardGameId; label: string }> = [
 export default function CardsTab({
   onAddToBasket,
   basketCount = 0,
+  basket,
+  basketOpen,
+  basketPage,
+  onToggleBasket,
+  onCloseBasket,
+  onBasketPageChange,
+  onAddBasketCardToPage,
+  onRemoveBasketCard,
 }: CardsTabProps) {
   const [game, setGame] = useState<CardGameId>("pokemon");
   const provider = CARD_PROVIDERS[game];
@@ -89,7 +107,7 @@ export default function CardsTab({
   async function searchCards(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
 
-    // Note to self: invalidate any older request before starting a new search.
+    // start new search, inv old reqs
     const searchVersion = ++searchVersionRef.current;
 
     loadingMoreRef.current = false;
@@ -132,6 +150,7 @@ export default function CardsTab({
     }
   }
 
+
   const loadMoreCards = useCallback(async () => {
     if (!hasSearched || !hasMore || loading || loadingMoreRef.current) {
       return;
@@ -151,11 +170,11 @@ export default function CardsTab({
         PAGE_SIZE,
       );
 
-      // Ignore responses belonging to a previous search.
+      // ignore prew serach responsne
       if (searchVersion !== searchVersionRef.current) return;
 
       setResults((current) => {
-        // Note to self: guard against duplicates if an API returns overlapping pages.
+        // guard for dups
         const existingIds = new Set(current.map((card) => card.id));
         const newCards = cards.filter((card) => !existingIds.has(card.id));
         return [...current, ...newCards];
@@ -200,7 +219,7 @@ export default function CardsTab({
         }
       },
       {
-        // Start loading before the user reaches the very bottom
+        // auto laod on scroll for card search
         rootMargin: "500px 0px",
       },
     );
@@ -224,6 +243,7 @@ export default function CardsTab({
   }
 
   return (
+  <>
     <main className="cards-area">
       <aside className="cards-sidebar">
         <div className="cards-sidebar-heading">
@@ -337,9 +357,16 @@ export default function CardsTab({
             <h1>Cards</h1>
             <p className="cards-subtitle">{provider.description}</p>
           </div>
-          <div className="cards-basket-count" aria-live="polite">
-            Basket <strong>{basketCount}</strong>
-          </div>
+          <Basket
+            basket={basket}
+            basketOpen={basketOpen}
+            basketPage={basketPage}
+            onToggle={onToggleBasket}
+            onClose={onCloseBasket}
+            onPageChange={onBasketPageChange}
+            onAddToPage={onAddBasketCardToPage}
+            onRemoveCard={onRemoveBasketCard}
+          />
         </header>
 
         {error && (
@@ -401,7 +428,7 @@ export default function CardsTab({
                       disabled={!onAddToBasket}
                       title={
                         !onAddToBasket
-                          ? "Connect the basket handler in App.tsx to enable adding cards."
+                          ? ""
                           : "Add this card to your basket"
                       }
                     >
@@ -433,5 +460,8 @@ export default function CardsTab({
         )}
       </section>
     </main>
+
+
+  </>
   );
 }

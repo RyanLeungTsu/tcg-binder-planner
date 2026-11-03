@@ -90,7 +90,11 @@ const pokemonProvider: CardProvider = {
     };
   },
 
-  async searchCards(filters: CardSearchFilters): Promise<NormalizedCard[]> {
+  async searchCards(
+    filters: CardSearchFilters,
+    page: number,
+    pageSize: number,
+  ): Promise<NormalizedCard[]> {
     const params = new URLSearchParams();
 
     if (filters.query) params.set("name", filters.query);
@@ -100,12 +104,13 @@ const pokemonProvider: CardProvider = {
 
     const query = params.toString();
     const url = `${TCGDEX_BASE_URL}/cards${query ? `?${query}` : ""}`;
-
     const summaries = await fetchJson<PokemonCard[]>(url);
 
-    // Limit detail requests to avoid to many reqs
+    const start = (page - 1) * pageSize;
+    const batch = summaries.slice(start, start + pageSize);
+
     return Promise.all(
-      summaries.slice(0, 60).map(async (summary) => {
+      batch.map(async (summary) => {
         try {
           const details = await fetchJson<PokemonCard>(
             `${TCGDEX_BASE_URL}/cards/${encodeURIComponent(summary.id)}`,
@@ -214,7 +219,11 @@ const yugiohProvider: CardProvider = {
     };
   },
 
-  async searchCards(filters: CardSearchFilters): Promise<NormalizedCard[]> {
+  async searchCards(
+    filters: CardSearchFilters,
+    page: number,
+    pageSize: number,
+  ): Promise<NormalizedCard[]> {
     const params = new URLSearchParams();
 
     if (filters.query) params.set("fname", filters.query);
@@ -222,15 +231,17 @@ const yugiohProvider: CardProvider = {
     if (filters.category) params.set("type", filters.category);
     if (filters.archetype) params.set("archetype", filters.archetype);
 
-    params.set("num", "60");
-    params.set("offset", "0");
+    params.set("num", String(pageSize));
+    params.set("offset", String((page - 1) * pageSize));
 
     const response = await fetchJson<YugiohCardResponse>(
       `${YGOPRODECK_BASE_URL}/cardinfo.php?${params.toString()}`,
     );
 
     return (response.data ?? []).map((card) => {
-      const image = card.card_images?.[0];
+      const image = card.card_images?.find(
+        (item) => item.image_url_small || item.image_url,
+      );
       const set = card.card_sets?.[0];
 
       return {
@@ -322,11 +333,14 @@ const mtgProvider: CardProvider = {
     };
   },
 
-  async searchCards(filters: CardSearchFilters): Promise<NormalizedCard[]> {
+  async searchCards(
+    filters: CardSearchFilters,
+    page: number,
+    pageSize: number,
+  ): Promise<NormalizedCard[]> {
     const queryParts: string[] = [];
 
     if (filters.query) {
-      // Quote names with spaces so Scryfall searches them correctly
       const safeName = filters.query.replace(/"/g, '\\"');
       queryParts.push(`name:"${safeName}"`);
     }
@@ -334,7 +348,6 @@ const mtgProvider: CardProvider = {
     if (filters.setId) queryParts.push(`set:${filters.setId}`);
     if (filters.category) queryParts.push(`type:${filters.category}`);
 
-    // Scryfall api needs search expression.
     const query = queryParts.length
       ? queryParts.join(" ")
       : "game:paper";
@@ -343,6 +356,7 @@ const mtgProvider: CardProvider = {
       q: query,
       order: "name",
       unique: "cards",
+      page: String(page),
     });
 
     try {
@@ -350,8 +364,10 @@ const mtgProvider: CardProvider = {
         `${SCRYFALL_BASE_URL}/cards/search?${params.toString()}`,
       );
 
-      return response.data.map((card) => {
-        const face = card.card_faces?.[0];
+      return response.data.slice(0, pageSize).map((card) => {
+        const face = card.card_faces?.find(
+          (item) => item.image_uris?.small || item.image_uris?.normal,
+        );
 
         return {
           id: `mtg-${card.id}`,
@@ -371,7 +387,7 @@ const mtgProvider: CardProvider = {
         };
       });
     } catch (error) {
-      // scryfall api seems to throw 404 when no cards match
+      // Scryfall seems to return 404 when cards dont match
       if (error instanceof Error && error.message.includes("(404)")) {
         return [];
       }
@@ -382,7 +398,7 @@ const mtgProvider: CardProvider = {
 };
 
 // -----------------------------------------------------------------------------
-// Shared registry
+// Shared reg
 // -----------------------------------------------------------------------------
 
 export const CARD_PROVIDERS: Record<CardGameId, CardProvider> = {
