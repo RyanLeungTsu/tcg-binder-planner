@@ -976,7 +976,6 @@ function App() {
       <div hidden={activeTab !== "cards"}>
         <CardsTab
           onAddToBasket={addToBasket}
-          basketCount={basket.length}
           basket={basket}
           basketOpen={basketOpen}
           basketPage={basketPage}
