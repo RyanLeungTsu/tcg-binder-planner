@@ -225,6 +225,9 @@ function BinderPageView({
               ]
                 .filter(Boolean)
                 .join(" ")}
+              data-binder-page={page.id}
+              data-binder-slot={index}
+
               style={{
                 gridColumn: isHorizontalMerge ? "span 2" : undefined,
                 gridRow: isVerticalMerge ? "span 2" : undefined,
@@ -587,6 +590,24 @@ function App() {
       ),
     }));
 
+    requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(
+        `.card-slot[data-binder-page="${pageId}"][data-binder-slot="${slotIndex}"]`,
+      );
+
+      target?.animate(
+        [
+          { transform: "scale(1.5)" },
+          { transform: "scale(1.04)" },
+          { transform: "scale(1)" },
+        ],
+        {
+          duration: 800,
+          easing: "ease-out",
+        },
+      );
+    });
+
     // for removing only if dragged onto a valid binder spot
     setBasket((previous) =>
       previous.filter((_, index) => index !== basketIndex),
@@ -699,6 +720,7 @@ function App() {
       };
     });
   }
+
 
   function addBasketCardToPage(basketIndex: number) {
     // uses the page currently being viewed

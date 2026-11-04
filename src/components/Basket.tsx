@@ -126,6 +126,7 @@ function Basket({
                   {basket.map((card, index) => (
                     <article
                       className="basket-card"
+                      data-basket-index={index}
                       key={`${card.id}-${index}`}
                       draggable={true}
                       onContextMenu={(event) => {
@@ -167,9 +168,11 @@ function Basket({
                       return (
                         <article
                           className="basket-card"
+                          data-basket-index={basketIndex}
                           key={`${card.id}-${basketIndex}`}
                           onContextMenu={(event) => {
                             event.preventDefault();
+                            event.stopPropagation();
                             onRemoveCard(basketIndex);
                           }}
                         >

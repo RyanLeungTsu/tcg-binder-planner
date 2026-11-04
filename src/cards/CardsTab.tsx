@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import { CARD_PROVIDERS } from "../cards/providers";
 import type { CardGameId, CardSet, NormalizedCard } from "./types";
 import "./CardsTab.css";
@@ -8,7 +8,6 @@ import Basket from "../components/Basket";
 
 type CardsTabProps = {
   onAddToBasket?: (card: NormalizedCard) => void;
-  basketCount?: number;
   basket: NormalizedCard[];
   basketOpen: boolean;
   basketPage: number;
@@ -29,7 +28,6 @@ const GAME_OPTIONS: Array<{ value: CardGameId; label: string }> = [
 
 export default function CardsTab({
   onAddToBasket,
-  basketCount = 0,
   basket,
   basketOpen,
   basketPage,
@@ -63,6 +61,171 @@ export default function CardsTab({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingMoreRef = useRef(false);
   const searchVersionRef = useRef(0);
+  // card anim
+  function animateCardToBasket(
+    event: MouseEvent<HTMLButtonElement>,
+    card: NormalizedCard,
+  ) {
+    const source = event.currentTarget
+      .closest(".catalogue-card")
+      ?.querySelector(".catalogue-card-image");
+
+    const target = document.querySelector(".basket-toggle");
+
+    if (!source || !target) {
+      onAddToBasket?.(card);
+      return;
+    }
+
+    // reduced-motion pref
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onAddToBasket?.(card);
+      return;
+    }
+
+    const sourceBounds = source.getBoundingClientRect();
+    const targetBounds = target.getBoundingClientRect();
+
+    // temp copy of card for anims
+    const flyingCard = source.cloneNode(true) as HTMLElement;
+
+    Object.assign(flyingCard.style, {
+      position: "fixed",
+      top: `${sourceBounds.top}px`,
+      left: `${sourceBounds.left}px`,
+      width: `${sourceBounds.width}px`,
+      height: `${sourceBounds.height}px`,
+      margin: "0",
+      zIndex: "9999",
+      pointerEvents: "none",
+      overflow: "hidden",
+      borderRadius: "0.5rem",
+      boxShadow: "0 0.75rem 2rem #00000080",
+      transformOrigin: "top left",
+    });
+
+    document.body.appendChild(flyingCard);
+
+    // for distance to basket
+    const moveX =
+      targetBounds.left + targetBounds.width / 2 - sourceBounds.left;
+    const moveY = targetBounds.top + targetBounds.height / 2 - sourceBounds.top;
+
+    const scale = Math.min(
+      targetBounds.width / sourceBounds.width,
+      targetBounds.height / sourceBounds.height,
+    );
+
+    // guard to add cards regardless of anim
+    onAddToBasket?.(card);
+
+    // anims temp card to basket
+    const animation = flyingCard.animate(
+      [
+        {
+          transform: "translate(0, 0) scale(1)",
+          opacity: 1,
+        },
+        {
+          transform: `translate(${moveX * 0.45}px, ${moveY * 0.35}px) scale(0.8)`,
+          opacity: 1,
+          offset: 0.45,
+        },
+        {
+          transform: `translate(${moveX}px, ${moveY}px) scale(${scale})`,
+          opacity: 0,
+        },
+      ],
+      {
+        duration: 900,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "forwards",
+      },
+    );
+
+    animation.onfinish = () => {
+      flyingCard.remove();
+    };
+  }
+
+  // Animates a basket card toward the centre of the screen before removing it
+  function animateBasketCardToGallery(basketIndex: number) {
+    // Find the visible basket card
+    const source = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        ".basket-card[data-basket-index]",
+      ),
+    ).find(
+      (element) =>
+        element.getClientRects().length > 0 &&
+        Number(element.dataset.basketIndex) === basketIndex,
+    );
+
+    // Remove normally if the card isn't visible or animations are disabled
+    if (
+      !source ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      onRemoveBasketCard(basketIndex);
+      return;
+    }
+
+    const bounds = source.getBoundingClientRect();
+
+    // Create a temporary copy of the basket card
+    const flyingCard = source.cloneNode(true) as HTMLElement;
+
+    Object.assign(flyingCard.style, {
+      position: "fixed",
+      top: `${bounds.top}px`,
+      left: `${bounds.left}px`,
+      width: `${bounds.width}px`,
+      height: `${bounds.height}px`,
+      margin: "0",
+      zIndex: "99999",
+      pointerEvents: "none",
+      overflow: "hidden",
+      borderRadius: "0.5rem",
+      boxShadow: "0 0.75rem 2rem #00000080",
+    });
+
+    document.body.appendChild(flyingCard);
+
+    // Calculate the distance to the centre of the screen
+    const moveX = window.innerWidth / 2 - (bounds.left + bounds.width / 2);
+    const moveY = window.innerHeight / 2 - (bounds.top + bounds.height / 2);
+
+    // Animate the card toward the centre
+    const animation = flyingCard.animate(
+      [
+        {
+          transform: "translate(0, 0) scale(1)",
+          opacity: 1,
+        },
+        {
+          transform: `translate(${moveX}px, ${moveY}px) scale(0.5)`,
+          opacity: 0,
+        },
+      ],
+      {
+        duration: 550,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "forwards",
+      },
+    );
+
+    // Remove the basket card after the animation finishes
+    onRemoveBasketCard(basketIndex);
+
+    // Let the temporary copy finish animating
+    animation.onfinish = () => {
+      flyingCard.remove();
+    };
+
+    animation.oncancel = () => {
+      flyingCard.remove();
+    };
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +312,6 @@ export default function CardsTab({
       }
     }
   }
-
 
   const loadMoreCards = useCallback(async () => {
     if (!hasSearched || !hasMore || loading || loadingMoreRef.current) {
@@ -243,225 +405,231 @@ export default function CardsTab({
   }
 
   return (
-  <>
-    <main className="cards-area">
-      <aside className="cards-sidebar">
-        <div className="cards-sidebar-heading">
-          <p className="cards-eyebrow">CARD CATALOGUE</p>
-          <h2>Search settings</h2>
-          <p>
-            Choose a game, then narrow the results using that game's available
-            data.
-          </p>
-        </div>
-
-        <form className="cards-filter-form" onSubmit={searchCards}>
-          <div className="cards-field">
-            <label htmlFor="card-game">Card game</label>
-            <select
-              id="card-game"
-              value={game}
-              onChange={(event) => changeGame(event.target.value as CardGameId)}
-            >
-              {GAME_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="cards-field">
-            <label htmlFor="card-search">Search cards</label>
-            <input
-              id="card-search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name or keyword..."
-            />
-          </div>
-
-          <div className="cards-field">
-            <label htmlFor="card-set">Set / expansion</label>
-            <select
-              id="card-set"
-              value={setId}
-              onChange={(event) => setSetId(event.target.value)}
-            >
-              <option value="">All sets</option>
-              {sets.map((set) => (
-                <option key={set.id} value={set.id}>
-                  {set.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="cards-field">
-            <label htmlFor="card-category">{categoryLabel}</label>
-            <select
-              id="card-category"
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-            >
-              <option value="">All types</option>
-              {categories.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="cards-field">
-            <label htmlFor="card-archetype">{archetypeLabel}</label>
-            <select
-              id="card-archetype"
-              value={archetype}
-              onChange={(event) => setArchetype(event.target.value)}
-            >
-              <option value="">All {archetypeLabel.toLowerCase()}s</option>
-              {archetypes.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            {game === "pokemon" && (
-              <p className="cards-help">
-                Pokémon suffixes and variants vary by card era and set.
-              </p>
-            )}
-          </div>
-
-          <button
-            className="cards-search-button"
-            type="submit"
-            disabled={loading}
-          >
-            {loading ? "Searching…" : "Search cards"}
-          </button>
-        </form>
-
-        <div className="cards-sidebar-footer">
-          <span className="cards-status-dot" />
-          <span>Card data provided by {provider.label}</span>
-        </div>
-      </aside>
-
-      <section className="cards-results">
-        <header className="cards-results-header">
-          <div>
-            <p className="cards-snippet">COLLECTION</p>
-            <h1>Cards</h1>
-            <p className="cards-subtitle">{provider.description}</p>
-          </div>
-          <Basket
-            basket={basket}
-            basketOpen={basketOpen}
-            basketPage={basketPage}
-            onToggle={onToggleBasket}
-            onClose={onCloseBasket}
-            onPageChange={onBasketPageChange}
-            onAddToPage={onAddBasketCardToPage}
-            onRemoveCard={onRemoveBasketCard}
-          />
-        </header>
-
-        {error && (
-          <p className="cards-message cards-error" role="status">
-            {error}
-          </p>
-        )}
-
-        {!hasSearched && !loading && (
-          <div className="cards-empty-state">
-            <span className="cards-empty-icon">⌕</span>
-            <h2>Find your next card</h2>
+    <>
+      <main className="cards-area">
+        <aside className="cards-sidebar">
+          <div className="cards-sidebar-heading">
+            <p className="cards-eyebrow">CARD CATALOGUE</p>
+            <h2>Search settings</h2>
             <p>
-              Search by name or select a set, then apply any game-specific
-              filters.
+              Choose a game, then narrow the results using that game's available
+              data.
             </p>
           </div>
-        )}
 
-        {loading && <p className="cards-message">Loading cards…</p>}
-
-        {!loading && results.length > 0 && (
-          <>
-            <p className="cards-result-count">
-              Showing {results.length} cards
-              {hasMore
-                ? " · Scroll down to load more"
-                : " · All matching results loaded"}
-            </p>
-
-            <div className="cards-grid">
-              {results.map((card) => (
-                <article className="catalogue-card" key={card.id}>
-                  <div className="catalogue-card-image">
-                    {card.imageUrl ? (
-                      <img src={card.imageUrl} alt={card.name} loading="lazy" />
-                    ) : (
-                      <div className="catalogue-card-no-image">
-                        Image unavailable
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="catalogue-card-info">
-                    <h2 title={card.name}>{card.name}</h2>
-                    <p className="catalogue-card-set">
-                      {card.setName}
-                      {card.number ? ` · ${card.number}` : ""}
-                    </p>
-
-                    {card.detail && (
-                      <p className="catalogue-card-detail">{card.detail}</p>
-                    )}
-
-                    <button
-                      className="catalogue-add-button"
-                      type="button"
-                      onClick={() => onAddToBasket?.(card)}
-                      disabled={!onAddToBasket}
-                      title={
-                        !onAddToBasket
-                          ? ""
-                          : "Add this card to your basket"
-                      }
-                    >
-                      + Add to basket
-                    </button>
-                  </div>
-                </article>
-              ))}
+          <form className="cards-filter-form" onSubmit={searchCards}>
+            <div className="cards-field">
+              <label htmlFor="card-game">Card game</label>
+              <select
+                id="card-game"
+                value={game}
+                onChange={(event) =>
+                  changeGame(event.target.value as CardGameId)
+                }
+              >
+                {GAME_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div
-              className="cards-load-more"
-              ref={sentinelRef}
-              aria-live="polite"
-            >
-              {loadingMore && (
-                <p className="cards-message">Loading more cards…</p>
+            <div className="cards-field">
+              <label htmlFor="card-search">Search cards</label>
+              <input
+                id="card-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Name or keyword..."
+              />
+            </div>
+
+            <div className="cards-field">
+              <label htmlFor="card-set">Set / expansion</label>
+              <select
+                id="card-set"
+                value={setId}
+                onChange={(event) => setSetId(event.target.value)}
+              >
+                <option value="">All sets</option>
+                {sets.map((set) => (
+                  <option key={set.id} value={set.id}>
+                    {set.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="cards-field">
+              <label htmlFor="card-category">{categoryLabel}</label>
+              <select
+                id="card-category"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              >
+                <option value="">All types</option>
+                {categories.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="cards-field">
+              <label htmlFor="card-archetype">{archetypeLabel}</label>
+              <select
+                id="card-archetype"
+                value={archetype}
+                onChange={(event) => setArchetype(event.target.value)}
+              >
+                <option value="">All {archetypeLabel.toLowerCase()}s</option>
+                {archetypes.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              {game === "pokemon" && (
+                <p className="cards-help">
+                  Pokémon suffixes and variants vary by card era and set.
+                </p>
               )}
-              {!hasMore && <p>You've reached the end of the results.</p>}
             </div>
-          </>
-        )}
 
-        {!loading && hasSearched && results.length === 0 && !error && (
-          <div className="cards-empty-state">
-            <h2>No results yet</h2>
-            <p>Try another name or set.</p>
+            <button
+              className="cards-search-button"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "Searching…" : "Search cards"}
+            </button>
+          </form>
+
+          <div className="cards-sidebar-footer">
+            <span className="cards-status-dot" />
+            <span>Card data provided by {provider.label}</span>
           </div>
-        )}
-      </section>
-    </main>
+        </aside>
 
+        <section className="cards-results">
+          <header className="cards-results-header">
+            <div>
+              <p className="cards-snippet">COLLECTION</p>
+              <h1>Cards</h1>
+              <p className="cards-subtitle">{provider.description}</p>
+            </div>
+            <Basket
+              basket={basket}
+              basketOpen={basketOpen}
+              basketPage={basketPage}
+              onToggle={onToggleBasket}
+              onClose={onCloseBasket}
+              onPageChange={onBasketPageChange}
+              onAddToPage={onAddBasketCardToPage}
+              onRemoveCard={animateBasketCardToGallery}
+            />
+          </header>
 
-  </>
+          {error && (
+            <p className="cards-message cards-error" role="status">
+              {error}
+            </p>
+          )}
+
+          {!hasSearched && !loading && (
+            <div className="cards-empty-state">
+              <span className="cards-empty-icon">⌕</span>
+              <h2>Find your next card</h2>
+              <p>
+                Search by name or select a set, then apply any game-specific
+                filters.
+              </p>
+            </div>
+          )}
+
+          {loading && <p className="cards-message">Loading cards…</p>}
+
+          {!loading && results.length > 0 && (
+            <>
+              <p className="cards-result-count">
+                Showing {results.length} cards
+                {hasMore
+                  ? " · Scroll down to load more"
+                  : " · All matching results loaded"}
+              </p>
+
+              <div className="cards-grid">
+                {results.map((card) => (
+                  <article
+                    className="catalogue-card"
+                    data-card-id={card.id}
+                    key={card.id}
+                  >
+                    <div className="catalogue-card-image">
+                      {card.imageUrl ? (
+                        <img
+                          src={card.imageUrl}
+                          alt={card.name}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="catalogue-card-no-image">
+                          Image unavailable
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="catalogue-card-info">
+                      <h2 title={card.name}>{card.name}</h2>
+                      <p className="catalogue-card-set">
+                        {card.setName}
+                        {card.number ? ` · ${card.number}` : ""}
+                      </p>
+
+                      {card.detail && (
+                        <p className="catalogue-card-detail">{card.detail}</p>
+                      )}
+
+                      <button
+                        className="catalogue-add-button"
+                        type="button"
+                        onClick={(event) => animateCardToBasket(event, card)}
+                        disabled={!onAddToBasket}
+                        title={
+                          !onAddToBasket ? "" : "Add this card to your basket"
+                        }
+                      >
+                        + Add to basket
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div
+                className="cards-load-more"
+                ref={sentinelRef}
+                aria-live="polite"
+              >
+                {loadingMore && (
+                  <p className="cards-message">Loading more cards…</p>
+                )}
+                {!hasMore && <p>You've reached the end of the results.</p>}
+              </div>
+            </>
+          )}
+
+          {!loading && hasSearched && results.length === 0 && !error && (
+            <div className="cards-empty-state">
+              <h2>No results yet</h2>
+              <p>Try another name or set.</p>
+            </div>
+          )}
+        </section>
+      </main>
+    </>
   );
 }
