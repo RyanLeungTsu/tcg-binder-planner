@@ -319,7 +319,9 @@ function BinderPageView({
                 <img
                   className="slot-image"
                   src={slot.image}
-                  alt={slot.card?.name ?? `Page ${page.id}, pocket ${index + 1}`}
+                  alt={
+                    slot.card?.name ?? `Page ${page.id}, pocket ${index + 1}`
+                  }
                   draggable={false}
                 />
               ) : slot.card ? (
@@ -721,7 +723,6 @@ function App() {
     });
   }
 
-
   function addBasketCardToPage(basketIndex: number) {
     // uses the page currently being viewed
     const pageId =
@@ -1013,30 +1014,41 @@ function App() {
         <div className="workspace" id="binder">
           <aside className="sidebar">
             <div className="sidebar-heading">
-              <p className="eyebrow">WORKSPACE</p>
-              <h2>Binder settings</h2>
+              <p className="eyebrow">YOUR COLLECTION</p>
+              <h2>My Binder</h2>
+              <p className="subheading">
+                Page{" "}
+                {data.pages.findIndex((page) => page.id === data.currentPage) +
+                  1}{" "}
+                of {data.pages.length}
+                <span className="dot-separator">·</span>
+                {visibleCount} pockets
+              </p>
             </div>
 
             <div className="sidebar-divider" />
 
             <section className="setting-group">
-              <label className="field-label" htmlFor="grid-size">
-                Grid layout
-              </label>
-              <select
-                id="grid-size"
-                value={data.grid}
-                onChange={(event) => updateData({ grid: event.target.value })}
+              <button
+                className={`mode-button ${massMode ? "mode-enabled" : ""}`}
+                onClick={() => {
+                  setMassMode((previous) => !previous);
+                  setCombineMode(false);
+                  setSelectedCombineSlot(null);
+                }}
+                aria-pressed={massMode}
               >
-                {GRID_OPTIONS.map((option) => (
-                  <option key={option.label} value={option.label}>
-                    {option.label} ({option.rows * option.cols} slots)
-                  </option>
-                ))}
-              </select>
-              <p className="help-text">
-                Hidden slots keep their contents when you change layouts.
-              </p>
+                <span className={`toggle-track ${massMode ? "toggle-on" : ""}`}>
+                  <span className="toggle-thumb" />
+                </span>
+
+                <span>
+                  <strong>Mass toggle</strong>
+                  <small>
+                    {massMode ? "Click slots to toggle" : "Use hover buttons"}
+                  </small>
+                </span>
+              </button>
             </section>
 
             <div className="sidebar-divider" />
@@ -1118,8 +1130,6 @@ function App() {
             <div className="sidebar-divider" />
 
             <section className="setting-group">
-              <p className="field-label">Combine Slots</p>
-
               <button
                 className={`mode-button ${combineMode ? "mode-enabled" : ""}`}
                 onClick={() => {
@@ -1136,20 +1146,14 @@ function App() {
                 </span>
 
                 <span>
-                  <strong>Combine mode</strong>
+                  <strong>Combine slots</strong>
                   <small>
                     {combineMode
-                      ? "Select two adjacent empty slots"
+                      ? "Select two adjacent slots"
                       : "Merge empty slots"}
                   </small>
                 </span>
               </button>
-
-              <p className="help-text">
-                {combineMode
-                  ? "Select two adjacent empty slots. Click × to separate a merged slot."
-                  : "Combine two horizontally or vertically adjacent empty slots."}
-              </p>
             </section>
 
             <div className="sidebar-divider" />
@@ -1224,82 +1228,16 @@ function App() {
           </aside>
 
           <main className="binder-main">
-            <div className="binder-toolbar">
-              <div>
-                <p className="eyebrow">YOUR COLLECTION</p>
-                <h1>My Binder</h1>
-                <p className="subheading">
-                  Page{" "}
-                  {data.pages.findIndex(
-                    (page) => page.id === data.currentPage,
-                  ) + 1}{" "}
-                  of {data.pages.length}
-                  <span className="dot-separator">·</span>
-                  {visibleCount} pockets
-                </p>
-              </div>
-
-              <Basket
-                basket={basket}
-                basketOpen={basketOpen}
-                basketPage={basketPage}
-                onToggle={() => setBasketOpen((previous) => !previous)}
-                onClose={() => setBasketOpen(false)}
-                onPageChange={setBasketPage}
-                onAddToPage={addBasketCardToPage}
-                onRemoveCard={removeBasketCard}
-              />
-
-              {/* move through the physical binder in reading order. */}
-              <div className="pagination">
-                <button
-                  className="button button-secondary"
-                  onClick={() => {
-                    if (viewMode === "cover") return;
-
-                    if (viewMode === "inside") {
-                      setViewMode("cover");
-                    } else if (viewMode === "back") {
-                      const lastPage = data.pages.length;
-                      if (lastPage <= 1) {
-                        setViewMode("inside");
-                      } else {
-                        setViewMode("pages");
-                        setSpreadStart(2 + 2 * Math.floor((lastPage - 2) / 2));
-                      }
-                    } else if (spreadStart === 2) {
-                      setViewMode("inside");
-                    } else {
-                      setSpreadStart((previous) => previous - 2);
-                    }
-                  }}
-                  disabled={viewMode === "cover"}
-                >
-                  ← Previous
-                </button>
-
-                <button
-                  className="button button-secondary"
-                  onClick={() => {
-                    if (viewMode === "cover") {
-                      setViewMode("inside");
-                    } else if (viewMode === "inside") {
-                      setViewMode(data.pages.length <= 1 ? "back" : "pages");
-                      setSpreadStart(2);
-                    } else if (viewMode === "pages") {
-                      if (spreadStart + 2 >= data.pages.length) {
-                        setViewMode("back");
-                      } else {
-                        setSpreadStart((previous) => previous + 2);
-                      }
-                    }
-                  }}
-                  disabled={viewMode === "back"}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
+            <Basket
+              basket={basket}
+              basketOpen={basketOpen}
+              basketPage={basketPage}
+              onToggle={() => setBasketOpen((previous) => !previous)}
+              onClose={() => setBasketOpen(false)}
+              onPageChange={setBasketPage}
+              onAddToPage={addBasketCardToPage}
+              onRemoveCard={removeBasketCard}
+            />
 
             {/* show the closed cover first, then the inside cover and page 1, followed by paired pages */}
             <div className="binder-viewer">
@@ -1455,6 +1393,60 @@ function App() {
                   </div>
                 </div>
               )}
+
+              <button
+                type="button"
+                className="binder-nav binder-nav-prev"
+                aria-label="Previous page"
+                title="Previous page"
+                disabled={viewMode === "cover"}
+                onClick={() => {
+                  if (viewMode === "cover") return;
+
+                  if (viewMode === "inside") {
+                    setViewMode("cover");
+                  } else if (viewMode === "back") {
+                    const lastPage = data.pages.length;
+
+                    if (lastPage <= 1) {
+                      setViewMode("inside");
+                    } else {
+                      setViewMode("pages");
+                      setSpreadStart(2 + 2 * Math.floor((lastPage - 2) / 2));
+                    }
+                  } else if (spreadStart === 2) {
+                    setViewMode("inside");
+                  } else {
+                    setSpreadStart((previous) => previous - 2);
+                  }
+                }}
+              >
+                ←
+              </button>
+
+              <button
+                type="button"
+                className="binder-nav binder-nav-next"
+                aria-label="Next page"
+                title="Next page"
+                disabled={viewMode === "back"}
+                onClick={() => {
+                  if (viewMode === "cover") {
+                    setViewMode("inside");
+                  } else if (viewMode === "inside") {
+                    setViewMode(data.pages.length <= 1 ? "back" : "pages");
+                    setSpreadStart(2);
+                  } else if (viewMode === "pages") {
+                    if (spreadStart + 2 >= data.pages.length) {
+                      setViewMode("back");
+                    } else {
+                      setSpreadStart((previous) => previous + 2);
+                    }
+                  }
+                }}
+              >
+                →
+              </button>
             </div>
 
             <footer className="binder-footer">

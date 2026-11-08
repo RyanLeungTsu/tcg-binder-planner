@@ -150,7 +150,7 @@ body:has(.basket-popup) {
 }
 
 .topbar {
-    position: static;
+    position: sticky;
     z-index: 100;
     top: 0;
     min-height: auto;
@@ -366,7 +366,6 @@ body:has(.basket-popup) {
     min-height: 0;
     max-width: none;
     overflow: hidden;
-
     padding: 1rem;
     color: #e7ebf4;
     background: #171b25;
@@ -653,14 +652,41 @@ body:has(.basket-popup) {
 }
 
 .basket-anchor {
-    position: relative;
-    z-index: 20;
-    width: fit-content;
-    margin: 0.5rem 0;
+    top: calc(max(8vh, 4.5rem) + 0.75rem);
+    right: 1.5rem;
 }
 
 .basket-toggle {
-    white-space: nowrap;
+    position: relative;
+    width: 3.5rem;
+    height: 3.5rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+}
+
+.basket-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.basket-count {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    display: grid;
+    place-items: center;
+    padding: 0 0.25rem;
+    color: white;
+    background: #e05265;
+    border: 0.1rem solid #171b25;
+    border-radius: 1rem;
+    font-size: 0.625rem;
+    font-weight: 750;
+    line-height: 1;
 }
 
 .basket-backdrop {
@@ -899,11 +925,48 @@ body:has(.basket-popup) {
 /* ---------- 5. Binder viewer ---------- */
 
 .binder-viewer {
+    position: relative;
+    isolation: isolate;
     width: 100%;
     min-width: 0;
     display: flex;
     justify-content: center;
     box-sizing: border-box;
+    overflow: visible;
+}
+
+/*nav buttons for binder*/
+.binder-nav {
+    position: absolute;
+    top: 50%;
+    z-index: 100;
+    pointer-events: auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: #e7ebf4;
+    background: #30384a;
+    border: 0.1rem solid #6575a0;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    line-height: 1;
+    box-shadow: 0 0.25rem 0.75rem #00000050;
+}
+
+.binder-nav-prev {
+    left: 0.5rem;
+    translate: -50% -50%;
+}
+
+.binder-nav-next {
+    right: 0.5rem;
+    translate: 50% -50%;
+}
+
+.binder-nav:hover:not(:disabled) {
+    background: #465477;
 }
 
 /* two physical pages with seam down the binder spine. */
@@ -1330,13 +1393,25 @@ body:has(.basket-popup) {
     }
 
     .workspace {
+        height: calc(100vh - max(8vh, 4.5rem));
+        height: calc(100dvh - max(8vh, 4.5rem));
+        min-height: 0;
         grid-template-columns: 14rem minmax(0, 1fr);
+        overflow: hidden;
     }
 
     .sidebar {
-        padding: 1.75rem 1rem 5rem;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 1.75rem 1rem 2rem;
         border-right: 0.1rem solid #2a3040;
         border-bottom: 0;
+    }
+
+    .basket-anchor {
+        position: fixed;
+        z-index: 90;
     }
 
     .basket-backdrop {
@@ -1415,14 +1490,14 @@ body:has(.basket-popup) {
     }
 
     .sidebar-footer {
-        position: absolute;
-        right: 1.5rem;
-        bottom: 1.5rem;
-        left: 1.5rem;
-        margin-top: 0;
+        position: static;
+        margin-top: 1.5rem;
     }
 
     .binder-main {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
         padding: 2rem 1.5rem 1.5rem;
     }
 

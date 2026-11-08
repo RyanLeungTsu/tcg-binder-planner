@@ -59,8 +59,25 @@ function Basket({
         onClick={onToggle}
         aria-expanded={basketOpen}
         aria-label={`Open card basket, ${basket.length} cards`}
+        title="Card basket"
       >
-        Basket ({basket.length})
+        <svg
+          className="basket-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 9h18l-1.5 11h-15L3 9Z" />
+          <path d="m7 9 5-6 5 6" />
+          <path d="M9 13v3" />
+          <path d="M15 13v3" />
+        </svg>
+
+        <span className="basket-count">{basket.length}</span>
       </button>
 
       {basketOpen && (
