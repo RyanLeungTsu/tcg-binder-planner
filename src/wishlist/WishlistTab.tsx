@@ -36,7 +36,10 @@ function WishlistTab({
   const activeWishlist =
     wishlists.find((wishlist) => wishlist.id === activeWishlistId) ?? null;
 
-  // NOTE: Creates an empty wishlist.
+  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
+  const [quantityInput, setQuantityInput] = useState("");
+
+  // creates an empty wishlist
   function handleCreateWishlist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -48,14 +51,14 @@ function WishlistTab({
     setShowCreateForm(false);
   }
 
-  // NOTE: Opens the selected wishlist.
+  // open wishlist
   function openWishlist(id: string) {
     setActiveWishlistId(id);
     setViewMode("list");
     setFeedback("");
   }
 
-  // NOTE: Closes the wishlist modal.
+  // close wishlist
   function closeWishlist() {
     setActiveWishlistId(null);
     setDraggedItemId(null);
@@ -63,13 +66,12 @@ function WishlistTab({
     setFeedback("");
   }
 
-  // NOTE: Starts editing a wishlist name.
+  // for name edit
   function startEditingWishlist(id: string, name: string) {
     setEditingWishlistId(id);
     setEditingWishlistName(name);
   }
 
-  // NOTE: Saves a renamed wishlist.
   function handleRenameWishlist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -82,13 +84,13 @@ function WishlistTab({
     setFeedback("Wishlist renamed.");
   }
 
-  // NOTE: Updates the ordered items in the active wishlist.
+  // update wishlist items
   function updateItems(items: WishlistItem[]) {
     if (!activeWishlist) return;
     onUpdateWishlistItems(activeWishlist.id, items);
   }
 
-  // NOTE: Updates a card's comment.
+  // comments for cards
   function updateComment(id: string, comment: string) {
     if (!activeWishlist) return;
 
@@ -101,7 +103,22 @@ function WishlistTab({
     );
   }
 
-  // NOTE: Toggles whether a wishlist card is already owned.
+  // update qty
+  function updateQuantity(id: string, quantity: number) {
+    if (!activeWishlist || !Number.isFinite(quantity)) return;
+
+    const safeQuantity = Math.max(1, Math.floor(quantity));
+
+    updateItems(
+      activeWishlist.items.map((item) =>
+        item.id === id && item.type === "card"
+          ? { ...item, quantity: safeQuantity }
+          : item,
+      ),
+    );
+  }
+
+  // owned toggle
   function toggleOwned(id: string) {
     if (!activeWishlist) return;
 
@@ -116,7 +133,7 @@ function WishlistTab({
     setFeedback("Card ownership updated.");
   }
 
-  // NOTE: Adds a new divider to the wishlist.
+  // adds divider
   function addSection() {
     if (!activeWishlist) return;
 
@@ -126,11 +143,11 @@ function WishlistTab({
       title: "New section",
     };
 
-    updateItems([...activeWishlist.items, section]);
+    updateItems([section, ...activeWishlist.items]);
     setFeedback("Section added.");
   }
 
-  // NOTE: Changes a section's title.
+  // divider section title
   function updateSectionTitle(id: string, title: string) {
     if (!activeWishlist) return;
 
@@ -143,14 +160,13 @@ function WishlistTab({
     );
   }
 
-  // NOTE: Starts dragging a wishlist item.
+  // for dragging items
   function handleDragStart(event: DragEvent<HTMLElement>, id: string) {
     setDraggedItemId(id);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", id);
   }
 
-  // NOTE: Moves a card or section to the position where it was dropped.
   function handleDrop(event: DragEvent<HTMLElement>, targetId: string) {
     event.preventDefault();
 
@@ -176,7 +192,6 @@ function WishlistTab({
     setDropTargetId(null);
   }
 
-  // NOTE: Finishes a drag operation, including cancelled drops.
   function handleDragEnd() {
     setDraggedItemId(null);
     setDropTargetId(null);
@@ -263,9 +278,14 @@ function WishlistTab({
               (item) => item.type === "card",
             );
             const isEditing = editingWishlistId === wishlist.id;
-            const cardCount = wishlist.items.filter(
-              (item) => item.type === "card",
-            ).length;
+            const cardCount = wishlist.items.reduce(
+              (total, item) => {
+                if (item.type !== "card" || !item.owned) return total;
+
+                return total + Math.max(1, item.quantity ?? 1);
+              },
+              0,
+            );
 
             return (
               <article className="wishlist-tile" key={wishlist.id}>
@@ -296,7 +316,6 @@ function WishlistTab({
                       {cardCount} {cardCount === 1 ? "card" : "cards"}
                     </span>
                   </div>
-                  <span className="wishlist-open-label">Open wishlist →</span>
                 </button>
 
                 <div className="wishlist-tile-info">
@@ -373,9 +392,11 @@ function WishlistTab({
                 <h2 id="wishlist-modal-title">{activeWishlist.name}</h2>
                 <span>
                   {
-                    activeWishlist.items.filter(
-                      (item) => item.type === "card",
-                    ).length
+                    activeWishlist.items.reduce(
+                      (total, item) =>
+                        item.type === "card" ? total + item.quantity : total,
+                      0,
+                    )
                   }{" "}
                   cards
                 </span>
@@ -520,6 +541,44 @@ function WishlistTab({
                             }
                           />
                         </label>
+
+                        <div className="wishlist-quantity-control">
+                          {editingQuantityId === item.id ? (
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={quantityInput}
+                              autoFocus
+                              onChange={(event) => setQuantityInput(event.target.value)}
+                              onBlur={() => {
+                                const quantity = Number(quantityInput);
+
+                                if (Number.isInteger(quantity) && quantity >= 1) {
+                                  updateQuantity(item.id, quantity);
+                                }
+
+                                setEditingQuantityId(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="wishlist-quantity-text"
+                              onClick={() => {
+                                setQuantityInput(String(item.quantity));
+                                setEditingQuantityId(item.id);
+                              }}
+                            >
+                              Qty: {item.quantity}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <button

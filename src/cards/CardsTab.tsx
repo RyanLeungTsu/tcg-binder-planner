@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import { CARD_PROVIDERS } from "../cards/providers";
-import type { CardGameId, CardSet, NormalizedCard } from "./types";
+import type { CardGameId, CardSet, NormalizedCard, Wishlist } from "./types";
 import "./CardsTab.css";
 // component imports
 import Basket from "../components/Basket";
@@ -16,6 +16,8 @@ type CardsTabProps = {
   onBasketPageChange: (page: number) => void;
   onAddBasketCardToPage: (basketIndex: number) => void;
   onRemoveBasketCard: (basketIndex: number) => void;
+  wishlists: Wishlist[];
+  onAddCardToWishlist: (card: NormalizedCard, wishlistId: string) => void;
 };
 
 const PAGE_SIZE = 20;
@@ -36,6 +38,8 @@ export default function CardsTab({
   onBasketPageChange,
   onAddBasketCardToPage,
   onRemoveBasketCard,
+  wishlists,
+  onAddCardToWishlist,
 }: CardsTabProps) {
   const [game, setGame] = useState<CardGameId>("pokemon");
   const provider = CARD_PROVIDERS[game];
@@ -61,6 +65,11 @@ export default function CardsTab({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingMoreRef = useRef(false);
   const searchVersionRef = useRef(0);
+
+  // wishlist
+  const [wishlistPickerCardId, setWishlistPickerCardId] = useState<string | null>(
+    null,
+  );
   // card anim
   function animateCardToBasket(
     event: MouseEvent<HTMLButtonElement>,
@@ -148,20 +157,16 @@ export default function CardsTab({
     };
   }
 
-  // Animates a basket card toward the centre of the screen before removing it
   function animateBasketCardToGallery(basketIndex: number) {
-    // Find the visible basket card
+    // finds the visible basket card
     const source = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        ".basket-card[data-basket-index]",
-      ),
+      document.querySelectorAll<HTMLElement>(".basket-card[data-basket-index]"),
     ).find(
       (element) =>
         element.getClientRects().length > 0 &&
         Number(element.dataset.basketIndex) === basketIndex,
     );
 
-    // Remove normally if the card isn't visible or animations are disabled
     if (
       !source ||
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -172,7 +177,7 @@ export default function CardsTab({
 
     const bounds = source.getBoundingClientRect();
 
-    // Create a temporary copy of the basket card
+    // temp copy of anim card
     const flyingCard = source.cloneNode(true) as HTMLElement;
 
     Object.assign(flyingCard.style, {
@@ -191,11 +196,10 @@ export default function CardsTab({
 
     document.body.appendChild(flyingCard);
 
-    // Calculate the distance to the centre of the screen
+    // card flies to center of viewport
     const moveX = window.innerWidth / 2 - (bounds.left + bounds.width / 2);
     const moveY = window.innerHeight / 2 - (bounds.top + bounds.height / 2);
 
-    // Animate the card toward the centre
     const animation = flyingCard.animate(
       [
         {
@@ -214,10 +218,10 @@ export default function CardsTab({
       },
     );
 
-    // Remove the basket card after the animation finishes
+    // card removes instatnly
     onRemoveBasketCard(basketIndex);
 
-    // Let the temporary copy finish animating
+    // temp copdy anim
     animation.onfinish = () => {
       flyingCard.remove();
     };
@@ -593,21 +597,97 @@ export default function CardsTab({
                         <p className="catalogue-card-detail">{card.detail}</p>
                       )}
 
-                      <button
-                        className="catalogue-add-button"
-                        type="button"
-                        onClick={(event) => animateCardToBasket(event, card)}
-                        disabled={!onAddToBasket}
-                        title={
-                          !onAddToBasket ? "" : "Add this card to your basket"
-                        }
-                      >
-                        + Add to basket
-                      </button>
+                      <div className="catalogue-card-actions">
+                        <button
+                          className="catalogue-add-button"
+                          type="button"
+                          onClick={(event) => animateCardToBasket(event, card)}
+                          disabled={!onAddToBasket}
+                          title={!onAddToBasket ? "" : "Add this card to your basket"}
+                        >
+                          + Add to basket
+                        </button>
+
+                        <div className="wishlist-picker">
+                          <button
+                            className="wishlist-star-button"
+                            type="button"
+                            aria-label={`Add ${card.name} to a wishlist`}
+                            aria-expanded={wishlistPickerCardId === card.id}
+                            title="Add to wishlist"
+                            onClick={() =>
+                              setWishlistPickerCardId((current) =>
+                                current === card.id ? null : card.id,
+                              )
+                            }
+                          >
+                            {wishlistPickerCardId === card.id ? "★" : "☆"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </article>
                 ))}
               </div>
+
+              {wishlistPickerCardId && (
+                <div
+                  className="wishlist-picker-overlay"
+                  onClick={() => setWishlistPickerCardId(null)}
+                >
+                  <div
+                    className="wishlist-picker-popup"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="wishlist-picker-heading"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <p
+                      className="wishlist-picker-heading"
+                      id="wishlist-picker-heading"
+                    >
+                      Add to wishlist
+                    </p>
+
+                    {wishlists.length === 0 ? (
+                      <p className="wishlist-picker-empty">
+                        You haven't created any wishlists yet.
+                      </p>
+                    ) : (
+                      <div className="wishlist-picker-list">
+                        {wishlists.map((wishlist) => (
+                          <button
+                            key={wishlist.id}
+                            type="button"
+                            className="wishlist-picker-option"
+                            onClick={() => {
+                              const card = results.find(
+                                (item) => item.id === wishlistPickerCardId,
+                              );
+
+                              if (!card) return;
+
+                              onAddCardToWishlist(card, wishlist.id);
+                              setWishlistPickerCardId(null);
+                            }}
+                          >
+                            <span>{wishlist.name}</span>
+                            <span className="wishlist-picker-arrow">+</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <button
+                      className="wishlist-picker-close"
+                      type="button"
+                      onClick={() => setWishlistPickerCardId(null)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div
                 className="cards-load-more"

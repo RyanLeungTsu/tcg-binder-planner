@@ -69,9 +69,11 @@ export type CardProvider = {
 // wishlist
 export type WishlistEntry = {
   id: string;
+  type: "card";
   card: NormalizedCard;
   owned: boolean;
   comment: string;
+  quantity: number;
 };
 
 // wishlist data

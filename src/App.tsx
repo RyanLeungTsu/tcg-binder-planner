@@ -60,6 +60,23 @@ const MAX_SLOTS = 36;
 //   free: ,
 //   pro: ,
 // };
+//
+// check is value is object
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// check for normalized card
+function isNormalizedCard(value: unknown): value is NormalizedCard {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.game === "pokemon" ||
+      value.game === "yugioh" ||
+      value.game === "mtg")
+  );
+}
 
 // restores wishlist before render
 function loadWishlists(): Wishlist[] {
@@ -72,40 +89,68 @@ function loadWishlists(): Wishlist[] {
 
     if (!Array.isArray(parsed)) return [];
 
-    return parsed
-      .filter(
-        (wishlist) =>
-          wishlist &&
-          typeof wishlist.id === "string" &&
-          typeof wishlist.name === "string",
-      )
-      .map((wishlist) => {
-        // converts old cards array to new array.
-        const oldCards = Array.isArray(wishlist.cards)
+    const validWishlists = (parsed as unknown[]).filter(
+      (wishlist): wishlist is Record<string, unknown> =>
+        isRecord(wishlist) &&
+        typeof wishlist.id === "string" &&
+        typeof wishlist.name === "string",
+    );
+
+    return validWishlists.map((wishlist) => {
+      const oldItems: unknown[] = Array.isArray(wishlist.items)
+        ? wishlist.items
+        : Array.isArray(wishlist.cards)
           ? wishlist.cards
           : [];
 
-        const oldItems = Array.isArray(wishlist.items)
-          ? wishlist.items
-          : oldCards;
+      const items: WishlistItem[] = oldItems.flatMap(
+        (item): WishlistItem[] => {
+          if (!isRecord(item)) return [];
 
-        const items: WishlistItem[] = oldItems
-          .filter((item: any) => item && item.card)
-          .map((item: any) => ({
-            id: item.id || crypto.randomUUID(),
-            type: "card" as const,
-            card: item.card,
-            owned: Boolean(item.owned),
-            comment: item.comment || "",
-          }));
+          const id =
+            typeof item.id === "string" ? item.id : crypto.randomUUID();
 
-        return {
-          id: wishlist.id,
-          name: wishlist.name,
-          items,
-          createdAt: wishlist.createdAt || Date.now(),
-        };
-      });
+          if (item.type === "section" && typeof item.title === "string") {
+            return [
+              {
+                id,
+                type: "section",
+                title: item.title,
+              },
+            ];
+          }
+
+          if (!isNormalizedCard(item.card)) return [];
+
+          return [
+            {
+              id,
+              type: "card",
+              card: item.card,
+              owned: Boolean(item.owned),
+              comment:
+                typeof item.comment === "string" ? item.comment : "",
+              quantity:
+                typeof item.quantity === "number" &&
+                Number.isInteger(item.quantity) &&
+                item.quantity > 0
+                  ? item.quantity
+                  : 1,
+            },
+          ];
+        },
+      );
+
+      return {
+        id: wishlist.id as string,
+        name: wishlist.name as string,
+        items,
+        createdAt:
+          typeof wishlist.createdAt === "number"
+            ? wishlist.createdAt
+            : Date.now(),
+      };
+    });
   } catch {
     return [];
   }
@@ -643,6 +688,7 @@ function App() {
           card: { ...slot.card! },
           owned: slot.owned,
           comment: "",
+          quantity: 1,
         })),
     );
 
@@ -674,6 +720,46 @@ function App() {
       previous.map((wishlist) =>
         wishlist.id === id ? { ...wishlist, items } : wishlist,
       ),
+    );
+  }
+
+  // for adding card to list
+  function addCardToWishlist(card: NormalizedCard, wishlistId: string) {
+    setWishlists((previous) =>
+      previous.map((wishlist) => {
+        if (wishlist.id !== wishlistId) return wishlist;
+
+        const existingItem = wishlist.items.find(
+          (item) => item.type === "card" && item.card.id === card.id,
+        );
+
+        // increase qty of card
+        if (existingItem && existingItem.type === "card") {
+          return {
+            ...wishlist,
+            items: wishlist.items.map((item) =>
+              item.id === existingItem.id && item.type === "card"
+                ? { ...item, quantity: item.quantity + 1 }
+                : item,
+            ),
+          };
+        }
+
+        // start at qty 1
+        const newItem: WishlistItem = {
+          id: crypto.randomUUID(),
+          type: "card",
+          card: { ...card },
+          owned: false,
+          comment: "",
+          quantity: 1,
+        };
+
+        return {
+          ...wishlist,
+          items: [...wishlist.items, newItem],
+        };
+      }),
     );
   }
 
@@ -1159,6 +1245,8 @@ function App() {
           onBasketPageChange={setBasketPage}
           onAddBasketCardToPage={addBasketCardToPage}
           onRemoveBasketCard={removeBasketCard}
+          wishlists={wishlists}
+          onAddCardToWishlist={addCardToWishlist}
         />
       </div>
 
