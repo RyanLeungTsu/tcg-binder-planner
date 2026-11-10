@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import "./App.css";
 //card imports
 import CardsTab from "./cards/CardsTab";
-import type { NormalizedCard } from "./cards/types";
+import type { NormalizedCard, Wishlist, WishlistItem } from "./cards/types";
+// Wishlist imports
+import WishlistTab from "./wishlist/WishlistTab";
 // component imports
 import Basket from "./components/Basket";
 
@@ -35,6 +37,7 @@ type BinderData = {
   grid: string;
   currentPage: number;
   coverColor: string;
+  name: string;
 };
 
 const GRID_OPTIONS: GridOption[] = [
@@ -49,7 +52,64 @@ const GRID_OPTIONS: GridOption[] = [
 ];
 
 const STORAGE_KEY = "tcg-binder-planner";
+const WISHLIST_STORAGE_KEY = "tcg-binder-planner-wishlists";
 const MAX_SLOTS = 36;
+
+// for later acc feature
+// const WISHLIST_LIMITS = {
+//   free: ,
+//   pro: ,
+// };
+
+// restores wishlist before render
+function loadWishlists(): Wishlist[] {
+  try {
+    const saved = localStorage.getItem(WISHLIST_STORAGE_KEY);
+
+    if (!saved) return [];
+
+    const parsed: unknown = JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (wishlist) =>
+          wishlist &&
+          typeof wishlist.id === "string" &&
+          typeof wishlist.name === "string",
+      )
+      .map((wishlist) => {
+        // converts old cards array to new array.
+        const oldCards = Array.isArray(wishlist.cards)
+          ? wishlist.cards
+          : [];
+
+        const oldItems = Array.isArray(wishlist.items)
+          ? wishlist.items
+          : oldCards;
+
+        const items: WishlistItem[] = oldItems
+          .filter((item: any) => item && item.card)
+          .map((item: any) => ({
+            id: item.id || crypto.randomUUID(),
+            type: "card" as const,
+            card: item.card,
+            owned: Boolean(item.owned),
+            comment: item.comment || "",
+          }));
+
+        return {
+          id: wishlist.id,
+          name: wishlist.name,
+          items,
+          createdAt: wishlist.createdAt || Date.now(),
+        };
+      });
+  } catch {
+    return [];
+  }
+}
 
 function createPage(id: number): BinderPage {
   return {
@@ -66,6 +126,7 @@ function createPage(id: number): BinderPage {
 // keep every page at 36 slots so changing layouts never deletes hidden slots
 function createInitialData(): BinderData {
   return {
+    name: "My Binder",
     pages: Array.from({ length: 20 }, (_, index) => createPage(index + 1)),
     grid: "3 × 3",
     currentPage: 1,
@@ -120,6 +181,7 @@ function loadBinder(): BinderData {
     });
 
     return {
+      name: typeof parsed.name === "string" ? parsed.name : initial.name,
       pages: pages.length > 0 ? pages : initial.pages,
       grid: GRID_OPTIONS.some((option) => option.label === parsed.grid)
         ? parsed.grid!
@@ -507,6 +569,7 @@ function canCombineSlots(
 
 function App() {
   const [data, setData] = useState<BinderData>(loadBinder);
+  const [wishlists, setWishlists] = useState<Wishlist[]>(loadWishlists);
   const [massMode, setMassMode] = useState(false);
   // Combined slots const
   const [combineMode, setCombineMode] = useState(false);
@@ -522,7 +585,9 @@ function App() {
   >("cover");
   const [spreadStart, setSpreadStart] = useState(2);
 
-  const [activeTab, setActiveTab] = useState<"binder" | "cards">("binder");
+  const [activeTab, setActiveTab] = useState<"binder" | "cards" | "wishlist">(
+    "binder",
+  );
   const [basket, setBasket] = useState<NormalizedCard[]>([]);
   // for basket modal
   const [basketOpen, setBasketOpen] = useState(false);
@@ -541,6 +606,74 @@ function App() {
 
     setBasketPage((previous) =>
       Math.min(previous, Math.max(0, Math.ceil((basket.length - 1) / 8) - 1)),
+    );
+  }
+
+  // for creating wishlist
+  function createWishlist(name: string) {
+    const newWishlist: Wishlist = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      items: [],
+      createdAt: Date.now(),
+    };
+
+    setWishlists((previous) => [...previous, newWishlist]);
+  }
+
+  // creates a wishlist from binder cards
+  // creates wishlist based on binder cards
+  function createWishlistFromBinder() {
+    const name = data.name.trim() || "My Binder";
+
+    if (
+      !window.confirm(
+        `Create a wishlist named "${name}" using the cards in this binder?`,
+      )
+    ) {
+      return;
+    }
+
+    const items: WishlistItem[] = data.pages.flatMap((page) =>
+      page.slots
+        .filter((slot) => slot.card !== null)
+        .map((slot) => ({
+          id: crypto.randomUUID(),
+          type: "card" as const,
+          card: { ...slot.card! },
+          owned: slot.owned,
+          comment: "",
+        })),
+    );
+
+    const newWishlist: Wishlist = {
+      id: crypto.randomUUID(),
+      name,
+      items,
+      createdAt: Date.now(),
+    };
+
+    setWishlists((previous) => [...previous, newWishlist]);
+  }
+
+  // renames a wishlist w/o changing cards
+  function renameWishlist(id: string, name: string) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) return;
+
+    setWishlists((previous) =>
+      previous.map((wishlist) =>
+        wishlist.id === id ? { ...wishlist, name: trimmedName } : wishlist,
+      ),
+    );
+  }
+
+  function updateWishlistItems(id: string, items: WishlistItem[]) {
+    setWishlists((previous) =>
+      previous.map((wishlist) =>
+        wishlist.id === id ? { ...wishlist, items } : wishlist,
+      ),
     );
   }
 
@@ -773,6 +906,15 @@ function App() {
     }
   }, [data]);
 
+  // persist wishlist controls seperately
+  useEffect(() => {
+    try {
+      localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlists));
+    } catch {
+      console.warn("Wishlist storage is full.");
+    }
+  }, [wishlists]);
+
   function updateData(changes: Partial<BinderData>) {
     setData((previous) => ({ ...previous, ...changes }));
   }
@@ -970,6 +1112,16 @@ function App() {
           >
             Cards
           </a>
+          <a
+            className={activeTab === "wishlist" ? "nav-active" : ""}
+            href="#wishlist"
+            onClick={(event) => {
+              event.preventDefault();
+              setActiveTab("wishlist");
+            }}
+          >
+            Wishlist
+          </a>
           <a href="#faq" onClick={(event) => event.preventDefault()}>
             FAQ
           </a>
@@ -1010,12 +1162,28 @@ function App() {
         />
       </div>
 
+      <div hidden={activeTab !== "wishlist"}>
+        <WishlistTab
+          wishlists={wishlists}
+          onCreateWishlist={createWishlist}
+          onRenameWishlist={renameWishlist}
+          onUpdateWishlistItems={updateWishlistItems}
+        />
+      </div>
+
       <div hidden={activeTab !== "binder"}>
         <div className="workspace" id="binder">
           <aside className="sidebar">
             <div className="sidebar-heading">
               <p className="eyebrow">YOUR COLLECTION</p>
-              <h2>My Binder</h2>
+              <input
+                className="binder-name-input"
+                type="text"
+                value={data.name}
+                maxLength={40}
+                aria-label="Binder name"
+                onChange={(event) => updateData({ name: event.target.value })}
+              />
               <p className="subheading">
                 Page{" "}
                 {data.pages.findIndex((page) => page.id === data.currentPage) +
@@ -1025,6 +1193,22 @@ function App() {
                 {visibleCount} pockets
               </p>
             </div>
+
+            <div className="sidebar-divider" />
+
+            {/* create wihslist btn */}
+            <section className="setting-group">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={createWishlistFromBinder}
+              >
+                Create Wishlist
+              </button>
+              <p className="help-text">
+                Creates wishlist based on your binder cards!
+              </p>
+            </section>
 
             <div className="sidebar-divider" />
 
@@ -1254,7 +1438,7 @@ function App() {
                   title="Open binder"
                 >
                   <span className="cover-kicker">TRADING CARD COLLECTION</span>
-                  <strong>MY BINDER</strong>
+                  <strong>{data.name.trim() || "MY BINDER"}</strong>
                   <span>{data.pages.length} pages · Click to open</span>
                   {/*placeholder*/}
                   <span className="cover-mark">TCG</span>

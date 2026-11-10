@@ -65,3 +65,28 @@ export type CardProvider = {
     pageSize: number,
   ) => Promise<NormalizedCard[]>;
 };
+
+// wishlist
+export type WishlistEntry = {
+  id: string;
+  card: NormalizedCard;
+  owned: boolean;
+  comment: string;
+};
+
+// wishlist data
+export type Wishlist = {
+  id: string;
+  name: string;
+  items: WishlistItem[];
+  createdAt: number;
+};
+
+export type WishlistItem = WishlistEntry | WishlistSection;
+
+// wishlist modal
+export type WishlistSection = {
+  id: string;
+  type: "section";
+  title: string;
+};

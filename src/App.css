@@ -969,6 +969,27 @@ body:has(.basket-popup) {
     background: #465477;
 }
 
+/*binder name*/
+.binder-name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.binder-name-input:hover,
+.binder-name-input:focus {
+  border-bottom-color: currentColor;
+}
+
 /* two physical pages with seam down the binder spine. */
 .binder-spread {
     display: grid;
