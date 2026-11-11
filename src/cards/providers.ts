@@ -1,3 +1,5 @@
+export { };
+
 import type {
   CardFilterOptions,
   CardGameId,
@@ -12,14 +14,29 @@ const YGOPRODECK_BASE_URL = "https://db.ygoprodeck.com/api/v7";
 const SCRYFALL_BASE_URL = "https://api.scryfall.com";
 
 // API req helpers
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+const responseCache = new Map<string, Promise<unknown>>();
 
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}): ${url}`);
+async function fetchJson<T>(url: string): Promise<T> {
+  let request = responseCache.get(url);
+
+  if (!request) {
+    request = fetch(url).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status}): ${url}`);
+      }
+
+      return response.json();
+    });
+
+    responseCache.set(url, request);
   }
 
-  return response.json() as Promise<T>;
+  try {
+    return (await request) as T;
+  } catch (error) {
+    responseCache.delete(url);
+    throw error;
+  }
 }
 
 // remove dups and sorts a-z
@@ -39,6 +56,12 @@ type PokemonSetResponse = {
   cardCount?: { total?: number };
 };
 
+type PokemonSetDetails = {
+  serie?: {
+    id?: string;
+  };
+};
+
 type PokemonCard = {
   id: string;
   name: string;
@@ -49,7 +72,31 @@ type PokemonCard = {
   suffix?: string;
   hp?: number;
   types?: string[];
-  set?: { id?: string; name?: string };
+  set?: {
+    id?: string;
+    name?: string;
+    serie?: {
+      id?: string;
+    };
+  };
+};
+
+// current sets with issues from api
+const POKEMON_IMAGE_FALLBACKS: Record<
+  string,
+  { series: string; assetSetId: string; language?: string }
+> = {
+  "swsh4.5sv": { series: "swsh", assetSetId: "swsh4.5" },
+  "swsh12.5gg": { series: "swsh", assetSetId: "swsh12.5" },
+  "swsh9tg": { series: "swsh", assetSetId: "swsh9" },
+  "swsh9.5tg": { series: "swsh", assetSetId: "swsh9" },
+  "swsh10tg": { series: "swsh", assetSetId: "swsh10" },
+  "swsh10.5tg": { series: "swsh", assetSetId: "swsh10" },
+  "swsh11tg": { series: "swsh", assetSetId: "swsh11" },
+  "swsh11.5tg": { series: "swsh", assetSetId: "swsh11" },
+  "swsh12tg": { series: "swsh", assetSetId: "swsh12" },
+  "swsh12.5tg": { series: "swsh", assetSetId: "swsh12" },
+  exu: { series: "ex", assetSetId: "ex10", language: "fr" },
 };
 
 const pokemonProvider: CardProvider = {
@@ -71,15 +118,17 @@ const pokemonProvider: CardProvider = {
     }));
   },
 
+
+
   async getFilterOptions(): Promise<CardFilterOptions> {
     const [categories, suffixes] = await Promise.all([
-      fetchJson<Array<{ name: string }>>(
-        `${TCGDEX_BASE_URL}/categories`,
-      ).catch(() => []),
+      fetchJson<Array<{ name: string }>>(`${TCGDEX_BASE_URL}/categories`).catch(
+        () => [],
+      ),
 
-      fetchJson<Array<{ name: string }>>(
-        `${TCGDEX_BASE_URL}/suffixes`,
-      ).catch(() => []),
+      fetchJson<Array<{ name: string }>>(`${TCGDEX_BASE_URL}/suffixes`).catch(
+        () => [],
+      ),
     ]);
 
     return {
@@ -102,12 +151,12 @@ const pokemonProvider: CardProvider = {
     if (filters.category) params.set("category", filters.category);
     if (filters.archetype) params.set("suffix", filters.archetype);
 
+    params.set("pagination:page", String(page));
+    params.set("pagination:itemsPerPage", String(pageSize));
+
     const query = params.toString();
     const url = `${TCGDEX_BASE_URL}/cards${query ? `?${query}` : ""}`;
-    const summaries = await fetchJson<PokemonCard[]>(url);
-
-    const start = (page - 1) * pageSize;
-    const batch = summaries.slice(start, start + pageSize);
+    const batch = await fetchJson<PokemonCard[]>(url);
 
     return Promise.all(
       batch.map(async (summary) => {
@@ -116,7 +165,11 @@ const pokemonProvider: CardProvider = {
             `${TCGDEX_BASE_URL}/cards/${encodeURIComponent(summary.id)}`,
           );
 
-          return normalizePokemonCard(details);
+          return normalizePokemonCard({
+            ...details,
+            image: details.image ?? summary.image,
+            localId: details.localId ?? summary.localId,
+          });
         } catch {
           return normalizePokemonCard(summary);
         }
@@ -125,14 +178,54 @@ const pokemonProvider: CardProvider = {
   },
 };
 
-function normalizePokemonCard(card: PokemonCard): NormalizedCard {
+async function getPokemonFallbackImage(
+  card: PokemonCard,
+): Promise<string | undefined> {
+  const setId = card.set?.id;
+  const localId = card.localId;
+
+  if (!setId || !localId) return undefined;
+
+  const knownFallback = POKEMON_IMAGE_FALLBACKS[setId];
+
+  let seriesId = knownFallback?.series;
+
+  if (!seriesId) {
+    try {
+      const setDetails = await fetchJson<PokemonSetDetails>(
+        `${TCGDEX_BASE_URL}/sets/${encodeURIComponent(setId)}`,
+      );
+
+      seriesId = setDetails.serie?.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!seriesId) return undefined;
+
+  const assetSetId = knownFallback?.assetSetId ?? setId;
+  const language = knownFallback?.language ?? "en";
+
+  return `https://assets.tcgdex.net/${language}/${seriesId}/${assetSetId}/${encodeURIComponent(localId)}/low.png`;
+}
+
+async function normalizePokemonCard(
+  card: PokemonCard,
+): Promise<NormalizedCard> {
   const imageBase = card.image?.replace(/\/$/, "");
+
+  const fallbackImageUrl = imageBase
+    ? undefined
+    : await getPokemonFallbackImage(card);
 
   return {
     id: `pokemon-${card.id}`,
     game: "pokemon",
     name: card.name,
-    imageUrl: imageBase ? `${imageBase}/low.png` : undefined,
+    imageUrl: imageBase
+      ? `${imageBase}/low.png`
+      : fallbackImageUrl,
     setId: card.set?.id,
     setName: card.set?.name,
     number: card.localId,
@@ -211,9 +304,7 @@ const yugiohProvider: CardProvider = {
       categories: uniqueSorted(
         (cardResponse.data ?? []).map((card) => card.type),
       ),
-      archetypes: uniqueSorted(
-        archetypes.map((item) => item.archetype_name),
-      ),
+      archetypes: uniqueSorted(archetypes.map((item) => item.archetype_name)),
       categoryLabel: "Card type",
       archetypeLabel: "Archetype",
     };
@@ -348,9 +439,7 @@ const mtgProvider: CardProvider = {
     if (filters.setId) queryParts.push(`set:${filters.setId}`);
     if (filters.category) queryParts.push(`type:${filters.category}`);
 
-    const query = queryParts.length
-      ? queryParts.join(" ")
-      : "game:paper";
+    const query = queryParts.length ? queryParts.join(" ") : "game:paper";
 
     const params = new URLSearchParams({
       q: query,
@@ -400,7 +489,6 @@ const mtgProvider: CardProvider = {
 // -----------------------------------------------------------------------------
 // Shared reg
 // -----------------------------------------------------------------------------
-
 export const CARD_PROVIDERS: Record<CardGameId, CardProvider> = {
   pokemon: pokemonProvider,
   yugioh: yugiohProvider,

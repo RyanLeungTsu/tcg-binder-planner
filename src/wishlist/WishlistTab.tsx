@@ -8,6 +8,7 @@ type WishlistTabProps = {
   onCreateWishlist: (name: string) => void;
   onRenameWishlist: (id: string, name: string) => void;
   onUpdateWishlistItems: (id: string, items: WishlistItem[]) => void;
+  onOpenImage: (image: string) => void;
 };
 
 function WishlistTab({
@@ -15,6 +16,7 @@ function WishlistTab({
   onCreateWishlist,
   onRenameWishlist,
   onUpdateWishlistItems,
+  onOpenImage,
 }: WishlistTabProps) {
   const [newWishlistName, setNewWishlistName] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -24,9 +26,7 @@ function WishlistTab({
   );
   const [editingWishlistName, setEditingWishlistName] = useState("");
 
-  const [activeWishlistId, setActiveWishlistId] = useState<string | null>(
-    null,
-  );
+  const [activeWishlistId, setActiveWishlistId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -36,7 +36,9 @@ function WishlistTab({
   const activeWishlist =
     wishlists.find((wishlist) => wishlist.id === activeWishlistId) ?? null;
 
-  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
+  const [editingQuantityId, setEditingQuantityId] = useState<string | null>(
+    null,
+  );
   const [quantityInput, setQuantityInput] = useState("");
 
   // creates an empty wishlist
@@ -96,9 +98,7 @@ function WishlistTab({
 
     updateItems(
       activeWishlist.items.map((item) =>
-        item.id === id && item.type === "card"
-          ? { ...item, comment }
-          : item,
+        item.id === id && item.type === "card" ? { ...item, comment } : item,
       ),
     );
   }
@@ -153,9 +153,7 @@ function WishlistTab({
 
     updateItems(
       activeWishlist.items.map((item) =>
-        item.id === id && item.type === "section"
-          ? { ...item, title }
-          : item,
+        item.id === id && item.type === "section" ? { ...item, title } : item,
       ),
     );
   }
@@ -257,8 +255,8 @@ function WishlistTab({
           <div className="wishlist-empty-icon">☆</div>
           <h2>No wishlists yet</h2>
           <p>
-            Create your first wishlist to start keeping track of cards you
-            want to collect.
+            Create your first wishlist to start keeping track of cards you want
+            to collect.
           </p>
 
           {!showCreateForm && (
@@ -278,14 +276,11 @@ function WishlistTab({
               (item) => item.type === "card",
             );
             const isEditing = editingWishlistId === wishlist.id;
-            const cardCount = wishlist.items.reduce(
-              (total, item) => {
-                if (item.type !== "card" || !item.owned) return total;
+            const cardCount = wishlist.items.reduce((total, item) => {
+              if (item.type !== "card" || !item.owned) return total;
 
-                return total + Math.max(1, item.quantity ?? 1);
-              },
-              0,
-            );
+              return total + Math.max(1, item.quantity ?? 1);
+            }, 0);
 
             return (
               <article className="wishlist-tile" key={wishlist.id}>
@@ -296,12 +291,15 @@ function WishlistTab({
                   aria-label={`Open ${wishlist.name}`}
                 >
                   <div className="wishlist-thumbnail">
-                    {firstCard?.type === "card" &&
-                    firstCard.card.imageUrl ? (
+                    {firstCard?.type === "card" && firstCard.card.imageUrl ? (
                       <img
                         src={firstCard.card.imageUrl}
                         alt={firstCard.card.name}
                         loading="lazy"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenImage(firstCard.card.imageUrl!);
+                        }}
                       />
                     ) : (
                       <div className="wishlist-thumbnail-placeholder">
@@ -391,13 +389,11 @@ function WishlistTab({
                 <p className="wishlist-eyebrow">YOUR COLLECTION</p>
                 <h2 id="wishlist-modal-title">{activeWishlist.name}</h2>
                 <span>
-                  {
-                    activeWishlist.items.reduce(
-                      (total, item) =>
-                        item.type === "card" ? total + item.quantity : total,
-                      0,
-                    )
-                  }{" "}
+                  {activeWishlist.items.reduce(
+                    (total, item) =>
+                      item.type === "card" ? total + item.quantity : total,
+                    0,
+                  )}{" "}
                   cards
                 </span>
               </div>
@@ -464,9 +460,7 @@ function WishlistTab({
                         }`}
                         key={item.id}
                         draggable
-                        onDragStart={(event) =>
-                          handleDragStart(event, item.id)
-                        }
+                        onDragStart={(event) => handleDragStart(event, item.id)}
                         onDragOver={(event) => {
                           event.preventDefault();
                           setDropTargetId(item.id);
@@ -474,7 +468,10 @@ function WishlistTab({
                         onDrop={(event) => handleDrop(event, item.id)}
                         onDragEnd={handleDragEnd}
                       >
-                        <span className="wishlist-drag-handle" aria-hidden="true">
+                        <span
+                          className="wishlist-drag-handle"
+                          aria-hidden="true"
+                        >
                           ⠿
                         </span>
                         <input
@@ -499,9 +496,7 @@ function WishlistTab({
                       }`}
                       key={item.id}
                       draggable
-                      onDragStart={(event) =>
-                        handleDragStart(event, item.id)
-                      }
+                      onDragStart={(event) => handleDragStart(event, item.id)}
                       onDragOver={(event) => {
                         event.preventDefault();
                         setDropTargetId(item.id);
@@ -509,7 +504,10 @@ function WishlistTab({
                       onDrop={(event) => handleDrop(event, item.id)}
                       onDragEnd={handleDragEnd}
                     >
-                      <span className="wishlist-drag-handle" aria-label="Drag to reorder">
+                      <span
+                        className="wishlist-drag-handle"
+                        aria-label="Drag to reorder"
+                      >
                         ⠿
                       </span>
 
@@ -519,11 +517,10 @@ function WishlistTab({
                           src={item.card.imageUrl}
                           alt={item.card.name}
                           loading="lazy"
+                          onClick={() => onOpenImage(item.card.imageUrl!)}
                         />
                       ) : (
-                        <div className="wishlist-card-image-placeholder">
-                          ☆
-                        </div>
+                        <div className="wishlist-card-image-placeholder">☆</div>
                       )}
 
                       <div className="wishlist-card-details">
@@ -550,11 +547,16 @@ function WishlistTab({
                               step="1"
                               value={quantityInput}
                               autoFocus
-                              onChange={(event) => setQuantityInput(event.target.value)}
+                              onChange={(event) =>
+                                setQuantityInput(event.target.value)
+                              }
                               onBlur={() => {
                                 const quantity = Number(quantityInput);
 
-                                if (Number.isInteger(quantity) && quantity >= 1) {
+                                if (
+                                  Number.isInteger(quantity) &&
+                                  quantity >= 1
+                                ) {
                                   updateQuantity(item.id, quantity);
                                 }
 

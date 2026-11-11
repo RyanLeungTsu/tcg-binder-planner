@@ -269,6 +269,9 @@ type BinderPageViewProps = {
   selectedCombineSlot: number | null;
   onSelectCombineSlot: (pageId: number, slotIndex: number) => void;
   onRemoveCombinedSlot: (pageId: number, mergeId: string) => void;
+
+  // lightbox
+  onOpenImage: (image: string) => void;
 };
 
 // renders one physical binder page so two pages can sit side by side
@@ -284,6 +287,7 @@ function BinderPageView({
   selectedCombineSlot,
   onSelectCombineSlot,
   onRemoveCombinedSlot,
+  onOpenImage,
 }: BinderPageViewProps) {
   const visibleCount = grid.rows * grid.cols;
   // render merges that fit the current grid and visible area
@@ -430,6 +434,10 @@ function BinderPageView({
                     slot.card?.name ?? `Page ${page.id}, pocket ${index + 1}`
                   }
                   draggable={false}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenImage(slot.image!);
+                  }}
                 />
               ) : slot.card ? (
                 <div className="slot-no-image">
@@ -627,7 +635,9 @@ function App() {
   const [coverSide, setCoverSide] = useState<"front" | "back">("front");
   const [viewMode, setViewMode] = useState<
     "cover" | "inside" | "pages" | "back"
-  >("cover");
+    >("cover");
+  // lightbox
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [spreadStart, setSpreadStart] = useState(2);
 
   const [activeTab, setActiveTab] = useState<"binder" | "cards" | "wishlist">(
@@ -980,6 +990,22 @@ function App() {
   const spreadStyle = {
     maxWidth: `min(90rem, calc(75vh * ${(2 * grid.cols * 65) / (grid.rows * 90)}))`,
   };
+  // lightbox
+  useEffect(() => {
+    if (!lightboxImage) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setLightboxImage(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [lightboxImage]);
 
   // persist binder edits in this browser
   useEffect(() => {
@@ -1237,6 +1263,7 @@ function App() {
       <div hidden={activeTab !== "cards"}>
         <CardsTab
           onAddToBasket={addToBasket}
+          onOpenImage={setLightboxImage}
           basket={basket}
           basketOpen={basketOpen}
           basketPage={basketPage}
@@ -1256,6 +1283,7 @@ function App() {
           onCreateWishlist={createWishlist}
           onRenameWishlist={renameWishlist}
           onUpdateWishlistItems={updateWishlistItems}
+          onOpenImage={setLightboxImage}
         />
       </div>
 
@@ -1560,6 +1588,7 @@ function App() {
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
                     onReturnCardToBasket={returnCardToBasket}
+                    onOpenImage={setLightboxImage}
                   />
                 </div>
               )}
@@ -1593,6 +1622,7 @@ function App() {
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
                             onReturnCardToBasket={returnCardToBasket}
+                            onOpenImage={setLightboxImage}
                           />
                         ) : (
                           <div
@@ -1618,6 +1648,7 @@ function App() {
                             onDropBasketCard={placeBasketCard}
                             onDropBinderCard={moveBinderCard}
                             onReturnCardToBasket={returnCardToBasket}
+                            onOpenImage={setLightboxImage}
                           />
                         ) : (
                           <div
@@ -1650,6 +1681,7 @@ function App() {
                     onDropBasketCard={placeBasketCard}
                     onDropBinderCard={moveBinderCard}
                     onReturnCardToBasket={returnCardToBasket}
+                    onOpenImage={setLightboxImage}
                   />
 
                   <div
@@ -1731,6 +1763,30 @@ function App() {
           </main>
         </div>
       </div>
+      {lightboxImage && (
+        <div
+          className="image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Enlarged card image"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            type="button"
+            className="image-lightbox-close"
+            aria-label="Close image"
+            onClick={() => setLightboxImage(null)}
+          >
+            ×
+          </button>
+
+          <img
+            src={lightboxImage}
+            alt="Enlarged card"
+            onClick={() => setLightboxImage(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

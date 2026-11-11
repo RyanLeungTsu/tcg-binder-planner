@@ -18,7 +18,10 @@ type CardsTabProps = {
   onRemoveBasketCard: (basketIndex: number) => void;
   wishlists: Wishlist[];
   onAddCardToWishlist: (card: NormalizedCard, wishlistId: string) => void;
+  onOpenImage: (image: string) => void;
 };
+
+
 
 const PAGE_SIZE = 20;
 
@@ -40,7 +43,8 @@ export default function CardsTab({
   onRemoveBasketCard,
   wishlists,
   onAddCardToWishlist,
-}: CardsTabProps) {
+  onOpenImage,
+  }: CardsTabProps) {
   const [game, setGame] = useState<CardGameId>("pokemon");
   const provider = CARD_PROVIDERS[game];
 
@@ -578,6 +582,7 @@ export default function CardsTab({
                           src={card.imageUrl}
                           alt={card.name}
                           loading="lazy"
+                          onClick={() => onOpenImage(card.imageUrl!)}
                         />
                       ) : (
                         <div className="catalogue-card-no-image">
