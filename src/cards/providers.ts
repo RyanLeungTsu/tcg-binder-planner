@@ -1,8 +1,10 @@
-export { };
+export {};
 
 import type {
   CardFilterOptions,
   CardGameId,
+  CardPrice,
+  CardVariant,
   CardProvider,
   CardSearchFilters,
   CardSet,
@@ -79,6 +81,40 @@ type PokemonCard = {
       id?: string;
     };
   };
+  variants?: {
+    normal?: boolean;
+    reverse?: boolean;
+    holo?: boolean;
+    firstEdition?: boolean;
+    wPromo?: boolean;
+  };
+  pricing?: {
+    cardmarket?: {
+      unit?: string;
+      trend?: number;
+      low?: number;
+      avg?: number;
+      "trend-holo"?: number;
+    };
+    tcgplayer?: {
+      unit?: string;
+      updated?: string | number;
+      normal?: PokemonMarketPrice;
+      holofoil?: PokemonMarketPrice;
+      "reverse-holofoil"?: PokemonMarketPrice;
+      "1st-edition"?: PokemonMarketPrice;
+      "1st-edition-holofoil"?: PokemonMarketPrice;
+      unlimited?: PokemonMarketPrice;
+      "unlimited-holofoil"?: PokemonMarketPrice;
+    };
+  };
+};
+
+type PokemonMarketPrice = {
+  marketPrice?: number;
+  lowPrice?: number;
+  midPrice?: number;
+  highPrice?: number;
 };
 
 // current sets with issues from api
@@ -88,13 +124,13 @@ const POKEMON_IMAGE_FALLBACKS: Record<
 > = {
   "swsh4.5sv": { series: "swsh", assetSetId: "swsh4.5" },
   "swsh12.5gg": { series: "swsh", assetSetId: "swsh12.5" },
-  "swsh9tg": { series: "swsh", assetSetId: "swsh9" },
+  swsh9tg: { series: "swsh", assetSetId: "swsh9" },
   "swsh9.5tg": { series: "swsh", assetSetId: "swsh9" },
-  "swsh10tg": { series: "swsh", assetSetId: "swsh10" },
+  swsh10tg: { series: "swsh", assetSetId: "swsh10" },
   "swsh10.5tg": { series: "swsh", assetSetId: "swsh10" },
-  "swsh11tg": { series: "swsh", assetSetId: "swsh11" },
+  swsh11tg: { series: "swsh", assetSetId: "swsh11" },
   "swsh11.5tg": { series: "swsh", assetSetId: "swsh11" },
-  "swsh12tg": { series: "swsh", assetSetId: "swsh12" },
+  swsh12tg: { series: "swsh", assetSetId: "swsh12" },
   "swsh12.5tg": { series: "swsh", assetSetId: "swsh12" },
   exu: { series: "ex", assetSetId: "ex10", language: "fr" },
 };
@@ -117,8 +153,6 @@ const pokemonProvider: CardProvider = {
       logoUrl: set.logo,
     }));
   },
-
-
 
   async getFilterOptions(): Promise<CardFilterOptions> {
     const [categories, suffixes] = await Promise.all([
@@ -144,25 +178,81 @@ const pokemonProvider: CardProvider = {
     page: number,
     pageSize: number,
   ): Promise<NormalizedCard[]> {
-    const params = new URLSearchParams();
+    const language = filters.language ?? "en";
+    const languages: Array<"en" | "jp"> =
+      language === "both" ? ["en", "jp"] : [language];
 
-    if (filters.query) params.set("name", filters.query);
-    if (filters.setId) params.set("set.id", filters.setId);
-    if (filters.category) params.set("category", filters.category);
-    if (filters.archetype) params.set("suffix", filters.archetype);
+    // default set to exclude pockettcg
+    const pocketSetIds = new Set<string>();
 
-    params.set("pagination:page", String(page));
-    params.set("pagination:itemsPerPage", String(pageSize));
+    if (filters.includePocket !== true) {
+      const pocketSeriesByLanguage = await Promise.all(
+        languages.map((selectedLanguage) =>
+          fetchJson<{ sets?: Array<{ id: string }> }>(
+            `https://api.tcgdex.net/v2/${selectedLanguage}/series/tcgp`,
+          ),
+        ),
+      );
 
-    const query = params.toString();
-    const url = `${TCGDEX_BASE_URL}/cards${query ? `?${query}` : ""}`;
-    const batch = await fetchJson<PokemonCard[]>(url);
+      pocketSeriesByLanguage.forEach((series) => {
+        series.sets?.forEach((set) => {
+          pocketSetIds.add(set.id.toLowerCase());
+        });
+      });
+    }
+
+    async function searchLanguage(
+      selectedLanguage: "en" | "jp",
+    ): Promise<PokemonCard[]> {
+      const params = new URLSearchParams();
+
+      if (filters.query) params.set("name", filters.query);
+      if (filters.setId) params.set("set.id", filters.setId);
+      if (filters.category) params.set("category", filters.category);
+      if (filters.archetype) params.set("suffix", filters.archetype);
+
+      params.set("pagination:page", String(page));
+      params.set("pagination:itemsPerPage", String(pageSize));
+
+      const query = params.toString();
+      const baseUrl = `https://api.tcgdex.net/v2/${selectedLanguage}`;
+
+      return fetchJson<PokemonCard[]>(
+        `${baseUrl}/cards${query ? `?${query}` : ""}`,
+      );
+    }
+
+    const batches = await Promise.all(
+      languages.map((selectedLanguage) => searchLanguage(selectedLanguage)),
+    );
+
+    // combine languages without dup card ID
+    const uniqueCards = new Map<string, PokemonCard>();
+
+    batches.flat().forEach((card) => {
+      // TCGdex card IDs begin with their set ID (ex A1-001)
+      const cardId = card.id.toLowerCase();
+
+      const isPocketCard = Array.from(pocketSetIds).some((setId) =>
+        cardId.startsWith(`${setId}-`),
+      );
+
+      if (filters.includePocket !== true && isPocketCard) {
+        return;
+      }
+
+      if (!uniqueCards.has(card.id)) {
+        uniqueCards.set(card.id, card);
+      }
+    });
+
+    const cards = Array.from(uniqueCards.values()).slice(0, pageSize);
 
     return Promise.all(
-      batch.map(async (summary) => {
+      cards.map(async (summary) => {
         try {
           const details = await fetchJson<PokemonCard>(
-            `${TCGDEX_BASE_URL}/cards/${encodeURIComponent(summary.id)}`,
+            `https://api.tcgdex.net/v2/${language === "jp" ? "jp" : "en"}/cards/${encodeURIComponent(summary.id)}`,
           );
 
           return normalizePokemonCard({
@@ -210,6 +300,81 @@ async function getPokemonFallbackImage(
   return `https://assets.tcgdex.net/${language}/${seriesId}/${assetSetId}/${encodeURIComponent(localId)}/low.png`;
 }
 
+function getPokemonVariants(card: PokemonCard): CardVariant[] {
+  const variants = card.variants;
+  const pricing = card.pricing;
+
+  if (!variants) return [];
+
+  const variantOptions: Array<{
+    id: string;
+    label: string;
+    tcgplayerKey: "normal" | "holofoil" | "reverse-holofoil" | "1st-edition";
+    cardmarketKey?: "trend" | "trend-holo";
+  }> = [
+    {
+      id: "normal",
+      label: "Normal",
+      tcgplayerKey: "normal",
+      cardmarketKey: "trend",
+    },
+    {
+      id: "reverse",
+      label: "Reverse Holo",
+      tcgplayerKey: "reverse-holofoil",
+    },
+    {
+      id: "holo",
+      label: "Holo",
+      tcgplayerKey: "holofoil",
+      cardmarketKey: "trend-holo",
+    },
+    {
+      id: "firstEdition",
+      label: "First Edition",
+      tcgplayerKey: "1st-edition",
+    },
+  ];
+
+  return variantOptions
+    .filter((variant) => variants[variant.id as keyof typeof variants] === true)
+    .map((variant) => {
+      const tcgPrice = pricing?.tcgplayer?.[variant.tcgplayerKey];
+      const cardmarketPrice = variant.cardmarketKey
+        ? pricing?.cardmarket?.[variant.cardmarketKey]
+        : undefined;
+
+      const prices: CardPrice[] = [];
+
+      if (tcgPrice && typeof tcgPrice === "object") {
+        if (typeof tcgPrice.marketPrice === "number") {
+          prices.push({
+            source: "TCGplayer",
+            currency: pricing?.tcgplayer?.unit ?? "USD",
+            market: tcgPrice.marketPrice,
+            low: tcgPrice.lowPrice,
+            mid: tcgPrice.midPrice,
+          });
+        }
+      }
+
+      if (typeof cardmarketPrice === "number") {
+        prices.push({
+          source: "Cardmarket",
+          currency: pricing?.cardmarket?.unit ?? "EUR",
+          market: cardmarketPrice,
+          low: pricing?.cardmarket?.low,
+        });
+      }
+
+      return {
+        id: variant.id,
+        label: variant.label,
+        prices,
+      };
+    });
+}
+
 async function normalizePokemonCard(
   card: PokemonCard,
 ): Promise<NormalizedCard> {
@@ -219,23 +384,29 @@ async function normalizePokemonCard(
     ? undefined
     : await getPokemonFallbackImage(card);
 
+  const variants = getPokemonVariants(card);
+
+  // normal as default otherwise uses 1st available var
+  const selectedVariant =
+    variants.find((variant) => variant.id === "normal") ?? variants[0];
+
   return {
     id: `pokemon-${card.id}`,
     game: "pokemon",
     name: card.name,
-    imageUrl: imageBase
-      ? `${imageBase}/low.png`
-      : fallbackImageUrl,
+
+    variants,
+    selectedVariantId: selectedVariant?.id,
+    prices: selectedVariant?.prices ?? [],
+
+    imageUrl: imageBase ? `${imageBase}/low.png` : fallbackImageUrl,
     setId: card.set?.id,
     setName: card.set?.name,
     number: card.localId,
     rarity: card.rarity,
     category: card.category,
     archetype: card.suffix,
-    detail:
-      card.hp !== undefined
-        ? `HP ${card.hp}`
-        : card.types?.join(" · "),
+    detail: card.hp !== undefined ? `HP ${card.hp}` : card.types?.join(" · "),
   };
 }
 
@@ -264,6 +435,13 @@ type YugiohCard = {
   card_images?: Array<{
     image_url?: string;
     image_url_small?: string;
+  }>;
+  card_prices?: Array<{
+    cardmarket_price?: string;
+    tcgplayer_price?: string;
+    ebay_price?: string;
+    amazon_price?: string;
+    coolstuffinc_price?: string;
   }>;
 };
 
@@ -339,6 +517,18 @@ const yugiohProvider: CardProvider = {
         id: `yugioh-${card.id}`,
         game: "yugioh",
         name: card.name,
+        prices: [
+          {
+            source: "TCGplayer",
+            currency: "USD",
+            market: Number(card.card_prices?.[0]?.tcgplayer_price),
+          },
+          {
+            source: "Cardmarket",
+            currency: "EUR",
+            market: Number(card.card_prices?.[0]?.cardmarket_price),
+          },
+        ].filter((price) => Number.isFinite(price.market) && price.market > 0),
         imageUrl: image?.image_url_small ?? image?.image_url,
         setId: set?.set_code,
         setName: set?.set_name,
@@ -369,6 +559,12 @@ type MtgCard = {
   set_name: string;
   collector_number: string;
   rarity: string;
+  prices?: {
+    usd?: string | null;
+    usd_foil?: string | null;
+    eur?: string | null;
+    eur_foil?: string | null;
+  };
   type_line?: string;
   oracle_text?: string;
   image_uris?: {
@@ -462,6 +658,30 @@ const mtgProvider: CardProvider = {
           id: `mtg-${card.id}`,
           game: "mtg",
           name: card.name,
+          prices: [
+            {
+              source: "Market",
+              currency: "USD",
+              market: Number(card.prices?.usd),
+            },
+            {
+              source: "Foil",
+              currency: "USD",
+              market: Number(card.prices?.usd_foil),
+            },
+            {
+              source: "Market",
+              currency: "EUR",
+              market: Number(card.prices?.eur),
+            },
+            {
+              source: "Foil",
+              currency: "EUR",
+              market: Number(card.prices?.eur_foil),
+            },
+          ].filter(
+            (price) => Number.isFinite(price.market) && price.market > 0,
+          ),
           imageUrl:
             card.image_uris?.small ??
             face?.image_uris?.small ??

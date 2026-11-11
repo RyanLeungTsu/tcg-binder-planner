@@ -21,8 +21,6 @@ type CardsTabProps = {
   onOpenImage: (image: string) => void;
 };
 
-
-
 const PAGE_SIZE = 20;
 
 const GAME_OPTIONS: Array<{ value: CardGameId; label: string }> = [
@@ -44,7 +42,7 @@ export default function CardsTab({
   wishlists,
   onAddCardToWishlist,
   onOpenImage,
-  }: CardsTabProps) {
+}: CardsTabProps) {
   const [game, setGame] = useState<CardGameId>("pokemon");
   const provider = CARD_PROVIDERS[game];
 
@@ -58,6 +56,10 @@ export default function CardsTab({
   const [setId, setSetId] = useState("");
   const [category, setCategory] = useState("");
   const [archetype, setArchetype] = useState("");
+  const [pokemonLanguage, setPokemonLanguage] = useState<"en" | "jp" | "both">(
+    "en",
+  );
+  const [includePocket, setIncludePocket] = useState(false);
   const [results, setResults] = useState<NormalizedCard[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -71,9 +73,9 @@ export default function CardsTab({
   const searchVersionRef = useRef(0);
 
   // wishlist
-  const [wishlistPickerCardId, setWishlistPickerCardId] = useState<string | null>(
-    null,
-  );
+  const [wishlistPickerCardId, setWishlistPickerCardId] = useState<
+    string | null
+  >(null);
   // card anim
   function animateCardToBasket(
     event: MouseEvent<HTMLButtonElement>,
@@ -275,7 +277,10 @@ export default function CardsTab({
     };
   }, [provider]);
 
-  async function searchCards(event?: FormEvent<HTMLFormElement>) {
+  async function searchCards(
+    event?: FormEvent<HTMLFormElement>,
+    pocketOverride = includePocket,
+  ) {
     event?.preventDefault();
 
     // start new search, inv old reqs
@@ -292,7 +297,16 @@ export default function CardsTab({
 
     try {
       const cards = await provider.searchCards(
-        { query, setId, category, archetype },
+        {
+          query,
+          setId,
+          category,
+          archetype,
+          ...(game === "pokemon" && {
+            language: pokemonLanguage,
+            includePocket: pocketOverride,
+          }),
+        },
         1,
         PAGE_SIZE,
       );
@@ -335,7 +349,16 @@ export default function CardsTab({
 
     try {
       const cards = await provider.searchCards(
-        { query, setId, category, archetype },
+        {
+          query,
+          setId,
+          category,
+          archetype,
+          ...(game === "pokemon" && {
+            language: pokemonLanguage,
+            includePocket,
+          }),
+        },
         nextPage,
         PAGE_SIZE,
       );
@@ -369,7 +392,10 @@ export default function CardsTab({
   }, [
     archetype,
     category,
+    game,
     hasMore,
+    includePocket,
+    pokemonLanguage,
     hasSearched,
     loading,
     page,
@@ -516,6 +542,43 @@ export default function CardsTab({
             </button>
           </form>
 
+          {game === "pokemon" && (
+            <>
+              <div className="cards-field">
+                <label htmlFor="pokemon-language">Card language</label>
+                <select
+                  id="pokemon-language"
+                  value={pokemonLanguage}
+                  onChange={(event) =>
+                    setPokemonLanguage(
+                      event.target.value as "en" | "jp" | "both",
+                    )
+                  }
+                >
+                  <option value="en">English</option>
+                  <option value="jp">Japanese</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+
+              <label className="cards-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includePocket}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setIncludePocket(checked);
+
+                    if (hasSearched) {
+                      searchCards(undefined, checked);
+                    }
+                  }}
+                />
+                Pokémon TCG Pocket
+              </label>
+            </>
+          )}
+
           <div className="cards-sidebar-footer">
             <span className="cards-status-dot" />
             <span>Card data provided by {provider.label}</span>
@@ -602,13 +665,77 @@ export default function CardsTab({
                         <p className="catalogue-card-detail">{card.detail}</p>
                       )}
 
+                      {card.variants && card.variants.length > 1 && (
+                        <div className="catalogue-card-variant">
+                          <span className="catalogue-card-variant-label">
+                            Version
+                          </span>
+
+                          <div className="catalogue-card-variant-options">
+                            {card.variants.map((variant) => (
+                              <button
+                                key={variant.id}
+                                type="button"
+                                className={`catalogue-card-variant-option ${
+                                  (card.selectedVariantId ??
+                                    card.variants?.[0]?.id) === variant.id
+                                    ? "selected"
+                                    : ""
+                                }`}
+                                onClick={() => {
+                                  setResults((current) =>
+                                    current.map((item) =>
+                                      item.id === card.id
+                                        ? {
+                                            ...item,
+                                            selectedVariantId: variant.id,
+                                            prices: variant.prices,
+                                          }
+                                        : item,
+                                    ),
+                                  );
+                                }}
+                              >
+                                {variant.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="catalogue-card-prices">
+                        {card.prices && card.prices.length > 0 ? (
+                          card.prices.map((price, index) => (
+                            <p
+                              key={`${price.source}-${price.currency}-${index}`}
+                            >
+                              <span>{price.source}</span>
+                              <strong>
+                                {typeof price.market === "number"
+                                  ? new Intl.NumberFormat(undefined, {
+                                      style: "currency",
+                                      currency: price.currency,
+                                    }).format(price.market)
+                                  : "Price unavailable"}
+                              </strong>
+                            </p>
+                          ))
+                        ) : (
+                          <p className="catalogue-price-unavailable">
+                            Price unavailable
+                          </p>
+                        )}
+                      </div>
+
                       <div className="catalogue-card-actions">
                         <button
                           className="catalogue-add-button"
                           type="button"
                           onClick={(event) => animateCardToBasket(event, card)}
                           disabled={!onAddToBasket}
-                          title={!onAddToBasket ? "" : "Add this card to your basket"}
+                          title={
+                            !onAddToBasket ? "" : "Add this card to your basket"
+                          }
                         >
                           + Add to basket
                         </button>

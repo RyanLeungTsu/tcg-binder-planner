@@ -10,10 +10,31 @@ export type CardSet = {
   logoUrl?: string;
 };
 
+// for pricing
+export type CardPrice = {
+  source: string;
+  currency: string;
+  market?: number;
+  low?: number;
+  mid?: number;
+};
+
+// variant of card
+export type CardVariant = {
+  id: string;
+  label: string;
+  prices: CardPrice[];
+};
+
 // ui normalization
 export type NormalizedCard = {
   // unique card ID from the provider, prefixed with the game ID
   id: string;
+
+  // pricing
+  prices?: CardPrice[];
+  variants?: CardVariant[];
+  selectedVariantId?: string;
 
   // Unique basket entry ID for staging cards to binder
   basketEntryId?: string;
@@ -40,6 +61,8 @@ export type CardSearchFilters = {
   setId: string;
   category: string;
   archetype: string;
+  language?: "en" | "jp" | "both";
+  includePocket?: boolean;
 };
 
 // dynamic filter for the selected tcg
