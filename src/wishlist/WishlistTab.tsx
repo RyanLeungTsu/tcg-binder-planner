@@ -8,14 +8,79 @@ type WishlistTabProps = {
   onCreateWishlist: (name: string) => void;
   onRenameWishlist: (id: string, name: string) => void;
   onUpdateWishlistItems: (id: string, items: WishlistItem[]) => void;
+  onDeleteWishlist: (id: string) => void;
   onOpenImage: (image: string) => void;
 };
+
+
+// calculate wishlist total price
+function getWishlistPricing(items: WishlistItem[]) {
+  const totals = new Map<
+    string,
+    { source: string; currency: string; total: number }
+  >();
+
+  let missingPriceCount = 0;
+
+  for (const item of items) {
+    if (item.type !== "card") continue;
+
+    const quantity = Math.max(1, item.quantity ?? 1);
+    const prices = item.card.prices ?? [];
+
+    const hasUsablePrice = prices.some(
+      (price) =>
+        typeof price.market === "number" &&
+        Number.isFinite(price.market),
+    );
+
+    // cards without usable prices count as zero
+    if (!hasUsablePrice) {
+      missingPriceCount += quantity;
+    }
+
+    for (const price of prices) {
+      if (
+        typeof price.market !== "number" ||
+        !Number.isFinite(price.market)
+      ) {
+        continue;
+      }
+
+      const key = `${price.source}::${price.currency}`;
+      const existing = totals.get(key);
+
+      if (existing) {
+        existing.total += price.market * quantity;
+      } else {
+        totals.set(key, {
+          source: price.source,
+          currency: price.currency,
+          total: price.market * quantity,
+        });
+      }
+    }
+  }
+
+  return {
+    totals: Array.from(totals.values()),
+    missingPriceCount,
+  };
+}
+
+function formatWishlistPrice(value: number, currency: string) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+  }).format(value);
+}
 
 function WishlistTab({
   wishlists,
   onCreateWishlist,
   onRenameWishlist,
   onUpdateWishlistItems,
+  onDeleteWishlist,
   onOpenImage,
 }: WishlistTabProps) {
   const [newWishlistName, setNewWishlistName] = useState("");
@@ -35,6 +100,10 @@ function WishlistTab({
 
   const activeWishlist =
     wishlists.find((wishlist) => wishlist.id === activeWishlistId) ?? null;
+
+  const wishlistPricing = activeWishlist
+    ? getWishlistPricing(activeWishlist.items)
+    : null;
 
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(
     null,
@@ -86,10 +155,37 @@ function WishlistTab({
     setFeedback("Wishlist renamed.");
   }
 
+  // for wishlist deletion
+  function handleDeleteWishlist(id: string, name: string) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${name}"? This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    onDeleteWishlist(id);
+
+    if (activeWishlistId === id) {
+      closeWishlist();
+    }
+
+    if (editingWishlistId === id) {
+      setEditingWishlistId(null);
+      setEditingWishlistName("");
+    }
+  }
+
   // update wishlist items
   function updateItems(items: WishlistItem[]) {
     if (!activeWishlist) return;
     onUpdateWishlistItems(activeWishlist.id, items);
+  }
+
+  // remove a card from the wishlist
+  function removeCard(id: string) {
+    if (!activeWishlist) return;
+
+    updateItems(activeWishlist.items.filter((item) => item.id !== id));
   }
 
   // comments for cards
@@ -296,10 +392,6 @@ function WishlistTab({
                         src={firstCard.card.imageUrl}
                         alt={firstCard.card.name}
                         loading="lazy"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onOpenImage(firstCard.card.imageUrl!);
-                        }}
                       />
                     ) : (
                       <div className="wishlist-thumbnail-placeholder">
@@ -364,6 +456,13 @@ function WishlistTab({
                       Edit name
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="wishlist-delete-button"
+                    onClick={() => handleDeleteWishlist(wishlist.id, wishlist.name)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </article>
             );
@@ -436,6 +535,38 @@ function WishlistTab({
                 + Add section
               </button>
             </div>
+
+            {/* wishlist price summary */}
+            {wishlistPricing && (
+              <div className="wishlist-pricing-summary">
+                <div className="wishlist-pricing-heading">
+                  <h3>Wishlist value</h3>
+
+                  {wishlistPricing.totals.length > 0 ? (
+                    <div className="wishlist-pricing-totals">
+                      {wishlistPricing.totals.map((total) => (
+                        <p key={`${total.source}-${total.currency}`}>
+                          <span>{total.source}</span>
+                          <strong>
+                            {formatWishlistPrice(total.total, total.currency)}
+                          </strong>
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="wishlist-pricing-zero">Total: 0</p>
+                  )}
+
+                  <p className="wishlist-pricing-missing">
+                    ({wishlistPricing.missingPriceCount}{" "}
+                    {wishlistPricing.missingPriceCount === 1
+                      ? "card has"
+                      : "cards have"}{" "}
+                    no price data)
+                  </p>
+                </div>
+              </div>
+            )}
 
             {feedback && (
               <p className="wishlist-feedback" role="status">
@@ -526,6 +657,37 @@ function WishlistTab({
                       <div className="wishlist-card-details">
                         <h3>{item.card.name}</h3>
                         <p>{item.card.setName || "Unknown set"}</p>
+                        <div className="wishlist-card-pricing">
+                          {(() => {
+                            const selectedVariant =
+                              item.card.variants?.find(
+                                (variant) => variant.id === item.card.selectedVariantId,
+                              ) ?? item.card.variants?.[0];
+
+                            return selectedVariant ? (
+                              <span className="wishlist-card-variant">
+                                {selectedVariant.label}
+                              </span>
+                            ) : null;
+                          })()}
+
+                          {item.card.prices && item.card.prices.length > 0 ? (
+                            item.card.prices.map((price, index) => (
+                              <p key={`${price.source}-${price.currency}-${index}`}>
+                                <span>{price.source}</span>
+                                <strong>
+                                  {typeof price.market === "number"
+                                    ? formatWishlistPrice(price.market, price.currency)
+                                    : "Price unavailable"}
+                                </strong>
+                              </p>
+                            ))
+                          ) : (
+                            <p className="wishlist-card-price-unavailable">
+                              Price unavailable
+                            </p>
+                          )}
+                        </div>
                         <label className="wishlist-comment-label">
                           Comment
                           <input
@@ -590,6 +752,15 @@ function WishlistTab({
                         aria-pressed={item.owned}
                       >
                         {item.owned ? "✓ Owned" : "Mark owned"}
+                      </button>
+                      <button
+                        type="button"
+                        className="wishlist-remove-card-button"
+                        onClick={() => removeCard(item.id)}
+                        aria-label={`Remove ${item.card.name} from wishlist`}
+                        title="Remove card"
+                      >
+                        ×
                       </button>
                     </article>
                   );

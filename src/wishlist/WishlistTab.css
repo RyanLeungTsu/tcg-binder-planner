@@ -369,6 +369,48 @@
     outline-offset: 0.2rem;
 }
 
+.wishlist-card-pricing {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+.wishlist-card-variant {
+  justify-self: start;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  background: rgba(128, 128, 128, 0.15);
+  font-size: 0.75rem;
+}
+
+.wishlist-card-price-unavailable {
+  opacity: 0.6;
+}
+
+/* remove card button */
+.wishlist-remove-card-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10%;
+  background: #dc2626;
+  color: white;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.wishlist-remove-card-button:hover {
+  background: #991b1b;
+}
+
 /* grid layout. */
 
 .wishlist-grid {
@@ -524,6 +566,19 @@
 .wishlist-edit-button:hover {
     color: #fff;
     background: #35416a;
+}
+
+.wishlist-delete-button {
+  color: #dc2626;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.wishlist-delete-button:hover {
+  background: rgba(220, 38, 38, 0.1);
 }
 
 .wishlist-rename-form {

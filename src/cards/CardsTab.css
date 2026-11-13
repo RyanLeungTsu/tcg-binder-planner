@@ -378,11 +378,6 @@
   margin-top: 0.5rem;
 }
 
-.catalogue-card-variant-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
 .catalogue-card-variant-options {
   display: flex;
   flex-wrap: wrap;

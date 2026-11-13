@@ -725,6 +725,13 @@ function App() {
     );
   }
 
+  // wishlist deletion
+  function handleDeleteWishlist(id: string) {
+    setWishlists((previous) =>
+      previous.filter((wishlist) => wishlist.id !== id),
+    );
+  }
+
   function updateWishlistItems(id: string, items: WishlistItem[]) {
     setWishlists((previous) =>
       previous.map((wishlist) =>
@@ -1283,6 +1290,7 @@ function App() {
           onCreateWishlist={createWishlist}
           onRenameWishlist={renameWishlist}
           onUpdateWishlistItems={updateWishlistItems}
+          onDeleteWishlist={handleDeleteWishlist}
           onOpenImage={setLightboxImage}
         />
       </div>

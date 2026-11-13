@@ -665,12 +665,8 @@ export default function CardsTab({
                         <p className="catalogue-card-detail">{card.detail}</p>
                       )}
 
-                      {card.variants && card.variants.length > 1 && (
+                      {card.variants && card.variants.length > 0 && (
                         <div className="catalogue-card-variant">
-                          <span className="catalogue-card-variant-label">
-                            Version
-                          </span>
-
                           <div className="catalogue-card-variant-options">
                             {card.variants.map((variant) => (
                               <button
