@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import "./App.css";
 //card imports
 import CardsTab from "./cards/CardsTab";
-import type { NormalizedCard, Wishlist, WishlistItem } from "./cards/types";
+import type {
+  NormalizedCard,
+  Wishlist,
+  WishlistItem,
+  WishlistEntry,
+} from "./cards/types";
 // Wishlist imports
 import WishlistTab from "./wishlist/WishlistTab";
 // component imports
@@ -33,10 +38,12 @@ type BinderPage = {
 };
 
 type BinderData = {
+  id: string;
   pages: BinderPage[];
   grid: string;
   currentPage: number;
   coverColor: string;
+  coverImage: string | null;
   name: string;
 };
 
@@ -51,9 +58,19 @@ const GRID_OPTIONS: GridOption[] = [
   { label: "6 × 6", rows: 6, cols: 6 },
 ];
 
-const STORAGE_KEY = "tcg-binder-planner";
-const WISHLIST_STORAGE_KEY = "tcg-binder-planner-wishlists";
+// stores the complete binder collection
+const BINDERS_STORAGE_KEY = "tcg-binder-planner-binders";
+
+// stores selected binder
+const ACTIVE_BINDER_STORAGE_KEY = "tcg-binder-planner-active";
+
+// maximum number of slots supported on a binder page
 const MAX_SLOTS = 36;
+
+// ***legacy key for current data
+const STORAGE_KEY = "tcg-binder-planner";
+
+const WISHLIST_STORAGE_KEY = "tcg-binder-planner-wishlists";
 
 // for later acc feature
 // const WISHLIST_LIMITS = {
@@ -103,43 +120,39 @@ function loadWishlists(): Wishlist[] {
           ? wishlist.cards
           : [];
 
-      const items: WishlistItem[] = oldItems.flatMap(
-        (item): WishlistItem[] => {
-          if (!isRecord(item)) return [];
+      const items: WishlistItem[] = oldItems.flatMap((item): WishlistItem[] => {
+        if (!isRecord(item)) return [];
 
-          const id =
-            typeof item.id === "string" ? item.id : crypto.randomUUID();
+        const id = typeof item.id === "string" ? item.id : crypto.randomUUID();
 
-          if (item.type === "section" && typeof item.title === "string") {
-            return [
-              {
-                id,
-                type: "section",
-                title: item.title,
-              },
-            ];
-          }
-
-          if (!isNormalizedCard(item.card)) return [];
-
+        if (item.type === "section" && typeof item.title === "string") {
           return [
             {
               id,
-              type: "card",
-              card: item.card,
-              owned: Boolean(item.owned),
-              comment:
-                typeof item.comment === "string" ? item.comment : "",
-              quantity:
-                typeof item.quantity === "number" &&
-                Number.isInteger(item.quantity) &&
-                item.quantity > 0
-                  ? item.quantity
-                  : 1,
+              type: "section",
+              title: item.title,
             },
           ];
-        },
-      );
+        }
+
+        if (!isNormalizedCard(item.card)) return [];
+
+        return [
+          {
+            id,
+            type: "card",
+            card: item.card,
+            owned: Boolean(item.owned),
+            comment: typeof item.comment === "string" ? item.comment : "",
+            quantity:
+              typeof item.quantity === "number" &&
+              Number.isInteger(item.quantity) &&
+              item.quantity > 0
+                ? item.quantity
+                : 1,
+          },
+        ];
+      });
 
       return {
         id: wishlist.id as string,
@@ -169,79 +182,123 @@ function createPage(id: number): BinderPage {
 }
 
 // keep every page at 36 slots so changing layouts never deletes hidden slots
-function createInitialData(): BinderData {
+function createInitialData(name = "My Binder"): BinderData {
   return {
-    name: "My Binder",
+    id: crypto.randomUUID(),
+    name,
     pages: Array.from({ length: 20 }, (_, index) => createPage(index + 1)),
     grid: "3 × 3",
     currentPage: 1,
     coverColor: "#334155",
+    coverImage: null,
   };
 }
 
-// restores the saved binder before the first render to avoid overwriting it
-function loadBinder(): BinderData {
-  const initial = createInitialData();
+// restores and validates a saved binder
+function restoreBinder(value: unknown, fallbackName: string): BinderData {
+  const initial = createInitialData(fallbackName);
 
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return initial;
-
-    const parsed = JSON.parse(saved) as Partial<BinderData>;
-
-    if (!Array.isArray(parsed.pages)) return initial;
-
-    const pages = parsed.pages.map((page, index) => {
-      // const fallback = createPage(index + 1);
-
-      return {
-        id: Number.isInteger(page.id) ? page.id : index + 1,
-        slots: Array.from({ length: MAX_SLOTS }, (_, slotIndex) => {
-          const slot = page.slots?.[slotIndex];
-
-          return {
-            owned: Boolean(slot?.owned),
-            image: typeof slot?.image === "string" ? slot.image : null,
-            card:
-              slot?.card && typeof slot.card === "object"
-                ? (slot.card as NormalizedCard)
-                : null,
-          };
-        }),
-        //
-        combinedSlots: Array.isArray(page.combinedSlots)
-          ? page.combinedSlots.filter(
-              (merge: CombinedSlot) =>
-                Array.isArray(merge.slots) &&
-                merge.slots.length === 2 &&
-                merge.slots.every(
-                  (slotIndex: number) =>
-                    Number.isInteger(slotIndex) &&
-                    slotIndex >= 0 &&
-                    slotIndex < MAX_SLOTS,
-                ),
-            )
-          : [],
-      };
-    });
-
-    return {
-      name: typeof parsed.name === "string" ? parsed.name : initial.name,
-      pages: pages.length > 0 ? pages : initial.pages,
-      grid: GRID_OPTIONS.some((option) => option.label === parsed.grid)
-        ? parsed.grid!
-        : initial.grid,
-      currentPage: pages.some((page) => page.id === parsed.currentPage)
-        ? parsed.currentPage!
-        : (pages[0]?.id ?? 1),
-      coverColor:
-        typeof parsed.coverColor === "string"
-          ? parsed.coverColor
-          : initial.coverColor,
-    };
-  } catch {
+  if (!isRecord(value) || !Array.isArray(value.pages)) {
     return initial;
   }
+
+  const pages = value.pages.map((page, index) => {
+    if (!isRecord(page)) return createPage(index + 1);
+
+    return {
+      id: Number.isInteger(page.id) ? Number(page.id) : index + 1,
+      slots: Array.from({ length: MAX_SLOTS }, (_, slotIndex) => {
+        const slots = Array.isArray(page.slots) ? page.slots : [];
+        const slot = slots[slotIndex];
+
+        if (!isRecord(slot)) {
+          return { owned: false, image: null, card: null };
+        }
+
+        return {
+          owned: Boolean(slot.owned),
+          image: typeof slot.image === "string" ? slot.image : null,
+          card: isNormalizedCard(slot.card) ? slot.card : null,
+        };
+      }),
+      combinedSlots: Array.isArray(page.combinedSlots)
+        ? page.combinedSlots.filter(
+            (merge): merge is CombinedSlot =>
+              isRecord(merge) &&
+              typeof merge.id === "string" &&
+              Array.isArray(merge.slots) &&
+              merge.slots.length === 2 &&
+              merge.slots.every(
+                (index) =>
+                  Number.isInteger(index) &&
+                  Number(index) >= 0 &&
+                  Number(index) < MAX_SLOTS,
+              ),
+          )
+        : [],
+    };
+  });
+
+  return {
+    id: typeof value.id === "string" ? value.id : crypto.randomUUID(),
+    name: typeof value.name === "string" ? value.name : fallbackName,
+    pages: pages.length > 0 ? pages : initial.pages,
+    grid: GRID_OPTIONS.some((option) => option.label === value.grid)
+      ? String(value.grid)
+      : initial.grid,
+    currentPage: pages.some((page) => page.id === value.currentPage)
+      ? Number(value.currentPage)
+      : (pages[0]?.id ?? 1),
+    coverColor:
+      typeof value.coverColor === "string"
+        ? value.coverColor
+        : initial.coverColor,
+    coverImage: typeof value.coverImage === "string" ? value.coverImage : null,
+  };
+}
+
+// loads the binder collection and migrates the old single-binder save
+function loadBinders(): BinderData[] {
+  try {
+    const savedCollection = localStorage.getItem(BINDERS_STORAGE_KEY);
+
+    if (savedCollection) {
+      const parsed: unknown = JSON.parse(savedCollection);
+
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((binder, index) =>
+          restoreBinder(binder, `My Binder ${index + 1}`),
+        );
+      }
+    }
+
+    // migrate the existing single-binder save
+    const legacySave = localStorage.getItem(STORAGE_KEY);
+
+    if (legacySave) {
+      const parsed: unknown = JSON.parse(legacySave);
+      return [restoreBinder(parsed, "My Binder")];
+    }
+  } catch {
+    console.warn("Could not load saved binders.");
+  }
+
+  return [createInitialData()];
+}
+
+// restores the previously selected binder
+function loadActiveBinderId(binders: BinderData[]): string {
+  try {
+    const savedId = localStorage.getItem(ACTIVE_BINDER_STORAGE_KEY);
+
+    if (savedId && binders.some((binder) => binder.id === savedId)) {
+      return savedId;
+    }
+  } catch {
+    // use the first binder if local storage is unavailable
+  }
+
+  return binders[0].id;
 }
 
 type BinderPageViewProps = {
@@ -621,7 +678,24 @@ function canCombineSlots(
 }
 
 function App() {
-  const [data, setData] = useState<BinderData>(loadBinder);
+  // loads the saved binder collection once
+  const [initialBinders] = useState<BinderData[]>(loadBinders);
+
+  // stores the binder collection
+  const [binders, setBinders] = useState<BinderData[]>(initialBinders);
+
+  // restores the previously selected binder
+  const [activeBinderId, setActiveBinderId] = useState(() =>
+    loadActiveBinderId(initialBinders),
+  );
+
+  // loads the active binder's data
+  const [data, setData] = useState<BinderData>(
+    () =>
+      initialBinders.find(
+        (binder) => binder.id === loadActiveBinderId(initialBinders),
+      ) ?? initialBinders[0],
+  );
   const [wishlists, setWishlists] = useState<Wishlist[]>(loadWishlists);
   const [massMode, setMassMode] = useState(false);
   // Combined slots const
@@ -631,11 +705,11 @@ function App() {
     slotIndex: number;
   } | null>(null);
   const [pageInput, setPageInput] = useState("20");
-  const [coverImage, setCoverImage] = useState<string | null>(null);
+  // const [coverImage, setCoverImage] = useState<string | null>(null);
   const [coverSide, setCoverSide] = useState<"front" | "back">("front");
   const [viewMode, setViewMode] = useState<
     "cover" | "inside" | "pages" | "back"
-    >("cover");
+  >("cover");
   // lightbox
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [spreadStart, setSpreadStart] = useState(2);
@@ -643,6 +717,8 @@ function App() {
   const [activeTab, setActiveTab] = useState<"binder" | "cards" | "wishlist">(
     "binder",
   );
+  const [showBinderLibrary, setShowBinderLibrary] = useState(true);
+
   const [basket, setBasket] = useState<NormalizedCard[]>([]);
   // for basket modal
   const [basketOpen, setBasketOpen] = useState(false);
@@ -664,11 +740,100 @@ function App() {
     );
   }
 
+  // opens a binder from the library
+  function openBinder(binder: BinderData) {
+    setActiveBinderId(binder.id);
+    setData(binder);
+    setActiveTab("binder");
+    setShowBinderLibrary(false);
+    setViewMode("cover");
+    setSpreadStart(2);
+    setSelectedCombineSlot(null);
+    setCombineMode(false);
+    setMassMode(false);
+  }
+
+  // guests need an account before creating additional binders
+  function createBinder() {
+    alert("Sign in or create an account to add more binders.");
+  }
+
   // for creating wishlist
-  function createWishlist(name: string) {
+  function saveWishlist(name: string, items: WishlistItem[]) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) return;
+
+    const existingWishlist = wishlists.find(
+      (wishlist) =>
+        wishlist.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (existingWishlist) {
+      const confirmed = window.confirm(
+        `A wishlist named "${existingWishlist.name}" already exists.\n\nMerge the incoming cards into it? Existing sections, comments, quantities, and ownership will be preserved.`,
+      );
+
+      if (!confirmed) return;
+
+      // match incoming cards using their game and provider ID
+      const incomingCards = new Map(
+        items
+          .filter((item): item is WishlistEntry => item.type === "card")
+          .map((item) => [`${item.card.game}:${item.card.id}`, item]),
+      );
+
+      // Updates cards and preserves sections and existing metadata
+      const mergedItems = existingWishlist.items.map((item) => {
+        if (item.type === "section") return item;
+
+        const cardKey = `${item.card.game}:${item.card.id}`;
+        const incomingItem = incomingCards.get(cardKey);
+
+        if (!incomingItem) return item;
+
+        incomingCards.delete(cardKey);
+
+        return {
+          ...item,
+          card: incomingItem.card,
+        };
+      });
+
+      // Add cards to wishlist
+      mergedItems.push(...incomingCards.values());
+
+      setWishlists((previous) =>
+        previous.map((wishlist) =>
+          wishlist.id === existingWishlist.id
+            ? { ...wishlist, items: mergedItems }
+            : wishlist,
+        ),
+      );
+
+      return;
+    }
+
+    // creates new wishlist if one doesnt exist
     const newWishlist: Wishlist = {
       id: crypto.randomUUID(),
-      name: name.trim(),
+      name: trimmedName,
+      items,
+      createdAt: Date.now(),
+    };
+
+    setWishlists((previous) => [...previous, newWishlist]);
+  }
+
+  // creates an empty wishlist
+  function createWishlist(name: string) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) return;
+
+    const newWishlist: Wishlist = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
       items: [],
       createdAt: Date.now(),
     };
@@ -676,18 +841,9 @@ function App() {
     setWishlists((previous) => [...previous, newWishlist]);
   }
 
-  // creates a wishlist from binder cards
   // creates wishlist based on binder cards
   function createWishlistFromBinder() {
     const name = data.name.trim() || "My Binder";
-
-    if (
-      !window.confirm(
-        `Create a wishlist named "${name}" using the cards in this binder?`,
-      )
-    ) {
-      return;
-    }
 
     const items: WishlistItem[] = data.pages.flatMap((page) =>
       page.slots
@@ -702,14 +858,7 @@ function App() {
         })),
     );
 
-    const newWishlist: Wishlist = {
-      id: crypto.randomUUID(),
-      name,
-      items,
-      createdAt: Date.now(),
-    };
-
-    setWishlists((previous) => [...previous, newWishlist]);
+    saveWishlist(name, items);
   }
 
   // renames a wishlist w/o changing cards
@@ -1014,16 +1163,36 @@ function App() {
     };
   }, [lightboxImage]);
 
-  // persist binder edits in this browser
+  // updates the saved collection whenever the active binder changes
+  useEffect(() => {
+    setBinders((previous) => {
+      const exists = previous.some((binder) => binder.id === data.id);
+
+      if (exists) {
+        return previous.map((binder) =>
+          binder.id === data.id ? data : binder,
+        );
+      }
+
+      return [...previous, data];
+    });
+  }, [data]);
+
+  // saves the complete binder collection
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(BINDERS_STORAGE_KEY, JSON.stringify(binders));
     } catch {
       console.warn(
         "Binder storage is full. Try removing some uploaded images.",
       );
     }
-  }, [data]);
+  }, [binders]);
+
+  // remembers which binder was last opened
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_BINDER_STORAGE_KEY, activeBinderId);
+  }, [activeBinderId]);
 
   // persist wishlist controls seperately
   useEffect(() => {
@@ -1185,8 +1354,9 @@ function App() {
     reader.readAsDataURL(file);
   }
 
+  // saves the uploaded cover image to the active binder
   function uploadCover(file: File | undefined) {
-    uploadImage(file, setCoverImage);
+    uploadImage(file, (image) => updateData({ coverImage: image }));
   }
 
   // page 1 sits alone on the right; later pages are paired left-to-right
@@ -1267,6 +1437,72 @@ function App() {
         </div>
       </header>
 
+      <div
+        hidden={activeTab !== "binder" || !showBinderLibrary}
+        className="library-page"
+      >
+        <header className="library-header">
+          <div>
+            <p className="eyebrow">YOUR COLLECTION</p>
+            <h1>My Binders</h1>
+            <p className="subheading">
+              Manage and open your trading card binders.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={createBinder}
+          >
+            + Create Binder
+          </button>
+        </header>
+
+        <div className="binder-library-grid">
+          {binders.map((binder) => (
+            <article className="binder-library-card" key={binder.id}>
+              <button
+                type="button"
+                className="closed-cover"
+                style={{
+                  backgroundColor: binder.coverColor,
+                  backgroundImage: binder.coverImage
+                    ? `linear-gradient(#0002, #0004), url("${binder.coverImage}")`
+                    : undefined,
+                }}
+                onClick={() => openBinder(binder)}
+                title={`Open ${binder.name || "My Binder"}`}
+              >
+                <span className="cover-kicker">TRADING CARD COLLECTION</span>
+                <strong>{binder.name.trim() || "MY BINDER"}</strong>
+                <span>{binder.pages.length} pages</span>
+                <span className="cover-mark">TCG</span>
+              </button>
+
+              <div className="binder-library-info">
+                <div>
+                  <strong>{binder.name || "My Binder"}</strong>
+                  <p>
+                    {binder.pages.reduce(
+                      (total, page) =>
+                        total +
+                        page.slots.filter((slot) => slot.card !== null).length,
+                      0,
+                    )}{" "}
+                    cards
+                  </p>
+                </div>
+
+                {binder.id === activeBinderId && (
+                  <span className="library-active-label">Active</span>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
       <div hidden={activeTab !== "cards"}>
         <CardsTab
           onAddToBasket={addToBasket}
@@ -1295,7 +1531,7 @@ function App() {
         />
       </div>
 
-      <div hidden={activeTab !== "binder"}>
+      <div hidden={activeTab !== "binder" || showBinderLibrary}>
         <div className="workspace" id="binder">
           <aside className="sidebar">
             <div className="sidebar-heading">
@@ -1515,10 +1751,10 @@ function App() {
                 />
               </label>
 
-              {coverImage && (
+              {data.coverImage && (
                 <button
                   className="text-button"
-                  onClick={() => setCoverImage(null)}
+                  onClick={() => updateData({ coverImage: null })}
                 >
                   Remove cover image
                 </button>
@@ -1536,6 +1772,19 @@ function App() {
           </aside>
 
           <main className="binder-main">
+          <button
+              type="button"
+              className="button button-ghost binder-back-button"
+              onClick={() => {
+                setShowBinderLibrary(true);
+                setCombineMode(false);
+                setSelectedCombineSlot(null);
+                setMassMode(false);
+                setBasketOpen(false);
+              }}
+            >
+              ← Back to My Binders
+            </button>
             <Basket
               basket={basket}
               basketOpen={basketOpen}
@@ -1554,8 +1803,8 @@ function App() {
                   className="closed-cover"
                   style={{
                     backgroundColor: data.coverColor,
-                    backgroundImage: coverImage
-                      ? `linear-gradient(#0002, #0004), url("${coverImage}")`
+                    backgroundImage: data.coverImage
+                      ? `linear-gradient(#0002, #0004), url("${data.coverImage}")`
                       : undefined,
                   }}
                   onClick={() => setViewMode("inside")}
@@ -1696,8 +1945,8 @@ function App() {
                     className="inside-cover back-cover"
                     style={{
                       backgroundColor: data.coverColor,
-                      backgroundImage: coverImage
-                        ? `linear-gradient(#0002, #0004), url("${coverImage}")`
+                      backgroundImage: data.coverImage
+                        ? `linear-gradient(#0002, #0004), url("${data.coverImage}")`
                         : undefined,
                     }}
                   >

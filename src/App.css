@@ -61,7 +61,7 @@ footer {
 }
 
 body {
-    min-width: 50vw;
+    min-width: 0;
     min-height: 100vh;
     margin: 0;
 }
@@ -922,6 +922,74 @@ body:has(.basket-popup) {
     font-size: 0.75rem;
 }
 
+/* binder library */
+.library-page {
+    min-height: calc(100vh - 5rem);
+    padding: 2rem 1rem;
+}
+
+.library-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.library-header h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.binder-library-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    max-width: 80rem;
+}
+
+.binder-library-card {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.binder-library-cover {
+    overflow: hidden;
+    aspect-ratio: 3 / 4;
+    padding: 1rem;
+    cursor: pointer;
+    font: inherit;
+}
+
+.binder-library-info {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.binder-library-info strong {
+    overflow-wrap: anywhere;
+}
+
+.binder-library-info p {
+    margin: 0.25rem 0 0;
+    color: #919db3;
+    font-size: 0.75rem;
+}
+
+.library-active-label {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    color: #a9b7ff;
+    background: #272d43;
+    border-radius: 0.5rem;
+    font-size: 0.625rem;
+}
+
 /* ---------- 5. Binder viewer ---------- */
 
 .binder-viewer {
@@ -1074,7 +1142,8 @@ body:has(.basket-popup) {
 .closed-cover {
     position: relative;
     width: min(100%, 100vw);
-    min-height: 80vh;
+    min-height: min(70vh, 35rem);
+    aspect-ratio: 3 / 4;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1439,8 +1508,8 @@ body:has(.basket-popup) {
     }
 
     .closed-cover {
-        min-height: 70vh;
-        width: min(100%, 30vw);
+        min-height: 25vh;
+        width: min(100%, 28vw);
     }
 }
 
@@ -1577,6 +1646,14 @@ body:has(.basket-popup) {
         flex-direction: row;
         align-items: center;
         gap: 1.5rem;
+    }
+
+    .library-page {
+        padding: 5rem 8rem 5rem 8rem;
+    }
+
+    .binder-library-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .pagination {
